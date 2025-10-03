@@ -1,5 +1,5 @@
 import { db } from './index';
-import { resources, categories, resourceCategories, categories } from './schema';
+import { resources, categories, resourceCategories, locations } from './schema';
 import { count, eq, inArray } from 'drizzle-orm';
 import type { LocationArray, LocationWithResourceCounts, resourceGroup, ResourceGroup } from './types';
 import type z from 'zod';

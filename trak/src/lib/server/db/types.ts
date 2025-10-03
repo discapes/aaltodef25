@@ -5,12 +5,6 @@ import { z } from 'zod';
 export const category = z.object({
     id: z.number(),
     name: z.string(),
-<<<<<<< HEAD
-    description: z.string().nullable(),
-    createdAt: z.date().nullable(),
-    updatedAt: z.date().nullable(),
-=======
->>>>>>> 8daf25d (Add queries for basic functionality)
 });
 
 // Base resource schema
@@ -51,7 +45,6 @@ export const locationWithResourceCounts = z.object({
     })),
 });
 
-<<<<<<< HEAD
 // Form schema for creating new resource groups
 export const createResourceGroupSchema = z.object({
     name: z.string().min(1, 'Name is required'),
@@ -82,11 +75,9 @@ export const createResourceGroupSchema = z.object({
         })
     ]))
 });
-=======
-export const locationArray = z.array(locationWithResourceCounts);
->>>>>>> 8daf25d (Add queries for basic functionality)
 
 // Type exports
+export const locationArray = z.array(locationWithResourceCounts);
 export type LocationWithResourceCounts = z.infer<typeof locationWithResourceCounts>;
 export type LocationArray = z.infer<typeof locationArray>;
 export type ResourceGroup = z.infer<typeof resourceGroup>;
