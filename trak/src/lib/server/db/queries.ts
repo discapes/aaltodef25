@@ -2,7 +2,7 @@ import { db } from './index';
 import { resources, locations, resourceCategories } from './schema';
 import { count, eq } from 'drizzle-orm';
 
-export async function getCategoryCounts(categoryId: number) {
+export async function getResourceCounts(categoryId: number) {
     return db
         .select({
             count: count(resources.id)
@@ -13,7 +13,7 @@ export async function getCategoryCounts(categoryId: number) {
         .execute();
 }
 
-export async function getGroupCounts(queryId: number) {
+export async function getResource(queryId: number) {
     // TODO
 }
 
