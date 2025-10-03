@@ -19,7 +19,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install uv
         uv sync --python "$(which python)" --frozen --no-dev --no-install-project
-        .venv/bin/python -m pip install pylint
+        uv pip install --python .venv/bin/python pylint
     - name: Analysing the code with pylint
       run: |
         .venv/bin/pylint $(git ls-files '*.py')
