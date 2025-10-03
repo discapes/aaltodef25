@@ -1,6 +1,6 @@
 import { db } from './index';
-import { resources, categories, locations, resourceCategories } from './schema';
-import { count, like, ilike, eq, and, or } from 'drizzle-orm';
+import { resources, locations, resourceCategories } from './schema';
+import { count, eq } from 'drizzle-orm';
 
 export async function getCategoryCounts(categoryId: number) {
     return db
@@ -15,4 +15,24 @@ export async function getCategoryCounts(categoryId: number) {
 
 export async function getGroupCounts(queryId: number) {
     // TODO
+}
+
+export async function getAllResources() {
+    return await db.select().from(resources);
+}
+
+export async function getResourcesWithLocation() {
+    return await db
+        .select({
+            id: resources.id,
+            name: resources.name,
+            description: resources.description,
+            latitude: resources.latitude,
+            longitude: resources.longitude,
+            locationName: locations.cityName,
+            createdAt: resources.createdAt,
+            updatedAt: resources.updatedAt
+        })
+        .from(resources)
+        .leftJoin(locations, eq(resources.locationId, locations.id));
 }
