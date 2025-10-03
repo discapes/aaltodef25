@@ -1,17 +1,16 @@
-from __future__ import annotations
-
 """Minimal YOLOv8 inference demo using the Roboflow inference SDK."""
+
+from __future__ import annotations
 
 from inference import get_model
 from inference.core.utils.image_utils import load_image_bgr
 import supervision as sv
 
-
 IMAGE_URL = "https://media.roboflow.com/inference/vehicles.png"
 MODEL_ID = "yolov8n-640"
 
-
 def main() -> None:
+    """Download an example image, run detection, and plot annotations."""
     image = load_image_bgr(IMAGE_URL)
 
     model = get_model(model_id=MODEL_ID)
