@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getAllResources } from '$lib/server/db/queries';
+import { getAllResources } from '$lib/server/db/basicQueries';
 
 export const GET: RequestHandler = async () => {
 	try {

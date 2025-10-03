@@ -9,5 +9,10 @@ const client = neon(env.DATABASE_URL);
 
 export const db = drizzle(client, { schema });
 
+// Barrel exports for easy importing
+export * from './queries';
+export * from './basicQueries';
+export * from '../utils/resourceGroupUtils';
+
 
 
