@@ -1,5 +1,5 @@
+import { getAllCategories, getAllResourceGroups } from '$lib/server/db/basicQueries';
 import type { PageServerLoad } from './$types';
-import { getAllCategories, getAllResourceGroups } from '$lib/server/db/queries';
 
 export const load: PageServerLoad = async () => {
     const categories = await getAllCategories();
