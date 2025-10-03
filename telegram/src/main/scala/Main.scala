@@ -1,16 +1,5 @@
-import cats.syntax.functor.*
-import com.bot4s.telegram.Implicits.toOption
-import com.bot4s.telegram.api.declarative.{Commands, InlineQueries, whenOrElse}
-import com.bot4s.telegram.api.{ChatActions, RequestHandler}
-import com.bot4s.telegram.clients.FutureSttpClient
-import com.bot4s.telegram.future.{Polling, TelegramBot}
-import com.bot4s.telegram.methods.{SendMessage, SendVoice}
-import com.bot4s.telegram.models.{InlineQuery, InlineQueryResultArticle, InlineQueryResultVoice, InputFile, InputTextMessageContent, Message}
 import com.typesafe.scalalogging.Logger
-import sttp.client3.*
-import sttp.model.Uri
 
-import java.net.URLEncoder
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 

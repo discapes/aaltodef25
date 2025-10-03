@@ -1,3 +1,16 @@
+import cats.syntax.functor.*
+import com.bot4s.telegram.Implicits.toOption
+import com.bot4s.telegram.api.ChatActions
+import com.bot4s.telegram.api.declarative.{Commands, InlineQueries, whenOrElse}
+import com.bot4s.telegram.future.Polling
+import com.bot4s.telegram.methods.SendVoice
+import com.bot4s.telegram.models.*
+import sttp.client3.*
+import sttp.model.Uri
+
+import java.net.URLEncoder
+import scala.concurrent.Future
+
 /**
  * Text-to-speech bot (using Google TTS API)
  *
