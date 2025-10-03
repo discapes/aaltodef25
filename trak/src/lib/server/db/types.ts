@@ -41,7 +41,7 @@ export const resourceGroup = z.object({
 });
 
 // Base resource schema
-export const locationCounts = z.object({
+export const locationWithResourceCounts = z.object({
     locations: z.array(z.object({
         location: location,
         resources: z.array(z.object({
@@ -59,7 +59,7 @@ export const locationCounts = z.object({
 });
 
 // Type exports
-export type LocationCounts = z.infer<typeof locationCounts>;
+export type LocationWithResourceCounts = z.infer<typeof locationWithResourceCounts>;
 export type ResourceGroup = z.infer<typeof resourceGroup>;
 export type Category = z.infer<typeof category>;
 export type Location = z.infer<typeof location>;
