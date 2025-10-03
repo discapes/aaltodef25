@@ -4,7 +4,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
 val logger = Logger("MJBot")
-def getBot(token: String) = TextToSpeechBot(token)
+def getBot(token: String) = EchoBot(token)
 
 
 /*
