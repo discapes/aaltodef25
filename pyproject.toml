@@ -1,0 +1,18 @@
+[project]
+name = "aaltodef"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = []
+requires-python = ">=3.12"
+dependencies = [
+    "inference>=0.58.1",
+    "supervision>=0.26.1",
+]
+
+[project.scripts]
+aaltodef = "aaltodef:main"
+
+[build-system]
+requires = ["uv_build>=0.8.2,<0.9.0"]
+build-backend = "uv_build"
