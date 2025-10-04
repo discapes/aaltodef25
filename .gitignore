@@ -11,3 +11,9 @@ wheels/
 
 # Scala Metals lsp
 .metals/
+
+# Kubernetes
+infra/kubeconfig
+
+# Environment variables
+.env

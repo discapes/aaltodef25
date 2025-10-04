@@ -1,0 +1,38 @@
+# hetzner-k3s create --config cluster.yaml
+cluster_name: adef
+kubeconfig_path: "./kubeconfig" # or /cluster/kubeconfig if you are going to use Docker
+k3s_version: v1.32.0+k3s1
+
+networking:
+  ssh:
+    port: 22
+    use_agent: false
+    public_key_path: "~/.ssh/id-me-25-7.pub"
+    private_key_path: "~/.ssh/id-me-25-7"
+  allowed_networks:
+    ssh:
+      - 0.0.0.0/0
+    api:
+      - 0.0.0.0/0
+
+masters_pool:
+  instance_type: cax11
+  instance_count: 3
+  locations:
+    - hel1
+    - hel1
+    - hel1
+
+schedule_workloads_on_masters: true
+# worker_node_pools:
+#   - name: small
+#     instance_type: cpx21
+#     instance_count: 4
+#     location: hel1
+#   - name: big
+#     instance_type: cpx31
+#     location: fsn1
+#     autoscaling:
+#       enabled: true
+#       min_instances: 0
+#       max_instances: 3
