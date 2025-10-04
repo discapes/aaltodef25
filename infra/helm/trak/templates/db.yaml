@@ -1,0 +1,9 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "trak.fullname" . }}-db
+  labels:
+    {{- include "trak.labels" . | nindent 4 }}
+spec:
+  storage:
+    size: 10Gi
