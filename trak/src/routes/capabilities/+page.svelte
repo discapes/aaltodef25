@@ -35,6 +35,7 @@
 	// Map components (loaded dynamically)
 	let Map: any, TileLayer: any, Marker: any, Popup: any, divIcon: any;
 	let mapComponentsLoaded = false;
+	let mapInstance: any = null;
 
 	// Capabilities state
 	let capabilityText = '';
@@ -47,64 +48,64 @@
 	let clusteredResources: any[] = [];
 	let relevantCategoryIds: number[] = [];
 
-	// Clustering function
+	// Clustering function - Simplified for better compatibility
 	function clusterResources(resources: any[], radiusKm = 5) {
 		if (!resources || resources.length === 0) return [];
-		
+
 		const clusters: any[] = [];
 		const processed = new Set<number>();
-		
+
 		for (let i = 0; i < resources.length; i++) {
 			if (processed.has(i)) continue;
-			
+
 			const resource = resources[i];
 			const cluster = {
-				id: `cluster_${clusters.length}`,
+				id: `cluster_${i}`, // Simple incremental ID
 				latitude: resource.latitude,
 				longitude: resource.longitude,
 				resources: [resource],
 				count: 1
 			};
-			
+
 			processed.add(i);
-			
-			// Find nearby resources
+
+			// Find nearby resources (simplified distance check)
 			for (let j = i + 1; j < resources.length; j++) {
 				if (processed.has(j)) continue;
-				
+
 				const other = resources[j];
 				const distance = calculateDistance(
-					resource.latitude, resource.longitude,
-					other.latitude, other.longitude
+					resource.latitude,
+					resource.longitude,
+					other.latitude,
+					other.longitude
 				);
-				
+
 				if (distance <= radiusKm) {
 					cluster.resources.push(other);
-					cluster.count++;
+					cluster.count = cluster.resources.length; // Simplified count
 					processed.add(j);
-					
-					// Update cluster center (centroid)
-					cluster.latitude = cluster.resources.reduce((sum, r) => sum + r.latitude, 0) / cluster.resources.length;
-					cluster.longitude = cluster.resources.reduce((sum, r) => sum + r.longitude, 0) / cluster.resources.length;
 				}
 			}
-			
+
 			clusters.push(cluster);
 		}
-		
+
 		return clusters;
 	}
 
 	// Calculate distance between two coordinates in kilometers
 	function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
 		const R = 6371; // Earth's radius in kilometers
-		const dLat = (lat2 - lat1) * Math.PI / 180;
-		const dLon = (lon2 - lon1) * Math.PI / 180;
-		const a = 
-			Math.sin(dLat/2) * Math.sin(dLat/2) +
-			Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-			Math.sin(dLon/2) * Math.sin(dLon/2);
-		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+		const dLat = ((lat2 - lat1) * Math.PI) / 180;
+		const dLon = ((lon2 - lon1) * Math.PI) / 180;
+		const a =
+			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+			Math.cos((lat1 * Math.PI) / 180) *
+				Math.cos((lat2 * Math.PI) / 180) *
+				Math.sin(dLon / 2) *
+				Math.sin(dLon / 2);
+		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 		return R * c;
 	}
 
@@ -113,9 +114,155 @@
 	let analysisLoading = false;
 	let showLocationAnalysis = false;
 
-	// Reactive statements
+	// Bottleneck analysis state
+	let bottlenecks: Array<{
+		categoryName: string;
+		shortage: number;
+		criticalityLevel: 'high' | 'medium' | 'low';
+		color: string;
+		extraPercentage: number;
+		totalUsed: number;
+		totalAvailable: number;
+	}> = [];
+
+	// Calculate bottlenecks from location analysis
+	function calculateBottlenecks() {
+		if (!locationAnalysis || locationAnalysis.length === 0) {
+			bottlenecks = [];
+			return;
+		}
+
+		const categoryStats: Record<
+			string,
+			{ used: number; available: number; percentages: number[] }
+		> = {};
+
+		// Collect usage and availability data for each category across all locations
+		locationAnalysis.forEach((location) => {
+			location.resourceGroups.forEach((rg: any) => {
+				if (rg.sources) {
+					rg.sources.forEach((source: any) => {
+						if (!categoryStats[source.categoryName]) {
+							categoryStats[source.categoryName] = { used: 0, available: 0, percentages: [] };
+						}
+
+						const used = source.unitsTransferred;
+						const available = source.remainingAtLocation || 0;
+
+						categoryStats[source.categoryName].used += used;
+						categoryStats[source.categoryName].available += available;
+
+						// Calculate percentage of extra items for this location
+						if (used > 0) {
+							const extraPercentage = (available / used) * 100;
+							categoryStats[source.categoryName].percentages.push(extraPercentage);
+						}
+					});
+				}
+			});
+		});
+
+		// Calculate average extra percentage across all categories and locations
+		let allPercentages: number[] = [];
+		Object.values(categoryStats).forEach((stats) => {
+			allPercentages = allPercentages.concat(stats.percentages);
+		});
+
+		const globalAverageExtra =
+			allPercentages.length > 0
+				? allPercentages.reduce((sum, p) => sum + p, 0) / allPercentages.length
+				: 0;
+
+		// Calculate bottleneckness for each category
+		const bottleneckList = Object.entries(categoryStats)
+			.map(([categoryName, stats]) => {
+				const categoryAverageExtra =
+					stats.percentages.length > 0
+						? stats.percentages.reduce((sum, p) => sum + p, 0) / stats.percentages.length
+						: 0;
+
+				// Bottleneckness = how far below the global average this category is
+				const bottleneckness = Math.max(0, globalAverageExtra - categoryAverageExtra);
+
+				let criticalityLevel: 'high' | 'medium' | 'low';
+				let color: string;
+
+				// Define criticality based on how far below average
+				if (bottleneckness >= globalAverageExtra * 0.7) {
+					// 70% or more below average
+					criticalityLevel = 'high';
+					color = '#ef4444'; // Red
+				} else if (bottleneckness >= globalAverageExtra * 0.6) {
+					// 40-70% below average
+					criticalityLevel = 'medium';
+					color = '#f59e0b'; // Orange
+				} else if (bottleneckness > 0.5) {
+					// Any amount below average
+					criticalityLevel = 'low';
+					color = '#eab308'; // Yellow
+				} else {
+					return null; // Not a bottleneck
+				}
+
+				return {
+					categoryName,
+					shortage: Math.round(bottleneckness),
+					criticalityLevel,
+					color,
+					extraPercentage: Math.round(categoryAverageExtra),
+					totalUsed: stats.used,
+					totalAvailable: stats.available
+				};
+			})
+			.filter((item) => item !== null)
+			.sort((a, b) => b.shortage - a.shortage)
+			.slice(0, 3); // Top 3
+
+		bottlenecks = bottleneckList;
+	}
+
+	// Simplified reactive statements - less aggressive updates
 	$: if (resourceGroup.items.length > 0) {
 		updateRelevantResources();
+	} else {
+		resources = [];
+		clusteredResources = [];
+	}
+
+	$: if (locationAnalysis.length > 0) {
+		calculateBottlenecks();
+	}
+
+	// Simplified clustering - only update when resources array length changes
+	$: if (resources.length > 0 && resources.length !== clusteredResources.length) {
+		clusteredResources = clusterResources(resources);
+	} else if (resources.length === 0) {
+		clusteredResources = [];
+	}
+
+	// Helper function to group sources by category and transportation time
+	function groupSources(sources: any[]) {
+		const grouped = new Map();
+
+		sources.forEach((source) => {
+			const key = `${source.categoryName}_${source.transportationTimeHours}_${source.sourceLocationName || 'local'}`;
+
+			if (grouped.has(key)) {
+				const existing = grouped.get(key);
+				existing.unitsTransferred += source.unitsTransferred;
+				existing.remainingAtLocation += source.remainingAtLocation || 0;
+			} else {
+				grouped.set(key, { ...source });
+			}
+		});
+
+		return Array.from(grouped.values());
+	}
+
+	// Helper function to get bottleneck color for a category
+	function getBottleneckColor(categoryName: string): string | null {
+		const bottleneck = bottlenecks.find((b) => b.categoryName === categoryName);
+		return bottleneck ? bottleneck.color : null;
 	}
 
 	// Resource group state
@@ -156,7 +303,8 @@
 			display: flex; align-items: center; justify-content: center;
 			color: white; font-weight: bold; font-size: ${fontSize}px;
 		">${count}</div>`;
-	}	function createLocationAnalysisIcon(location: any) {
+	}
+	function createLocationAnalysisIcon(location: any) {
 		const hasResources = location.resourceGroups.length > 0;
 		const maxCount = hasResources
 			? Math.max(...location.resourceGroups.map((rg: any) => rg.count))
@@ -181,6 +329,9 @@
 		if (!browser) return;
 
 		try {
+			// Add a small delay to ensure DOM is ready
+			await new Promise(resolve => setTimeout(resolve, 100));
+			
 			const [sveaflet, leaflet] = await Promise.all([import('sveaflet'), import('leaflet')]);
 
 			Map = sveaflet.Map;
@@ -189,6 +340,8 @@
 			Popup = sveaflet.Popup;
 			divIcon = leaflet.divIcon;
 
+			// Add another small delay before marking as loaded
+			await new Promise(resolve => setTimeout(resolve, 50));
 			mapComponentsLoaded = true;
 		} catch (err) {
 			console.error('Failed to load map components:', err);
@@ -201,10 +354,10 @@
 	async function updateRelevantResources() {
 		// Get category IDs from current resource group items
 		const categoryIds = resourceGroup.items
-			.filter(item => item.type === 'resource')
-			.map(item => item.categoryId)
-			.filter(id => id !== undefined);
-		
+			.filter((item) => item.type === 'resource')
+			.map((item) => item.data.id)
+			.filter((id) => id !== undefined);
+
 		relevantCategoryIds = categoryIds;
 		await loadRelevantResources();
 	}
@@ -212,7 +365,6 @@
 	async function loadRelevantResources() {
 		if (relevantCategoryIds.length === 0) {
 			resources = [];
-			clusteredResources = [];
 			return;
 		}
 
@@ -221,6 +373,7 @@
 			const response = await fetch(url);
 			if (response.ok) {
 				resources = await response.json();
+				// Manually trigger clustering for more predictable behavior
 				clusteredResources = clusterResources(resources);
 			} else {
 				console.error('Failed to load resources');
@@ -257,8 +410,14 @@
 				locationAnalysis = await response.json();
 				// Sort by highest total number of groups (sum of all resource group counts)
 				locationAnalysis.sort((a, b) => {
-					const totalA = a.resourceGroups.reduce((sum, rg) => sum + (rg.count || 0), 0);
-					const totalB = b.resourceGroups.reduce((sum, rg) => sum + (rg.count || 0), 0);
+					const totalA = a.resourceGroups.reduce(
+						(sum: number, rg: any) => sum + (rg.count || 0),
+						0
+					);
+					const totalB = b.resourceGroups.reduce(
+						(sum: number, rg: any) => sum + (rg.count || 0),
+						0
+					);
 					return totalB - totalA; // Descending order
 				});
 				showLocationAnalysis = true;
@@ -349,11 +508,24 @@
 			});
 
 			if (response.ok) {
+				const newGroup = await response.json();
+
 				// Reset form on success
 				resourceGroup = { name: '', description: '', items: [] };
-				
+
+				// Add success feedback
+				resourceGroupError = `✅ Resource group "${newGroup.name}" created successfully!`;
+
+				// Clear success message after 3 seconds
+				setTimeout(() => {
+					resourceGroupError = '';
+				}, 3000);
+
 				// Load relevant resources for the manually created resource group
 				await updateRelevantResources();
+
+				// Optionally reload the page to get fresh data including new resource groups list
+				// window.location.reload();
 			} else {
 				const errorText = await response.text();
 				resourceGroupError = 'Error creating resource group: ' + errorText;
@@ -398,26 +570,25 @@
 					e.preventDefault();
 					handleSubmit();
 				}}
-				class="space-y-6"
+				class="space-y-4"
 			>
 				<div>
-					<label for="capability" class="mb-2 block text-sm font-medium text-gray-700">
-						Describe capability
-					</label>
+					<div class="mb-2 flex items-center justify-between">
+						<label for="capability" class="block text-sm font-medium text-gray-700">
+							Describe capability
+						</label>
+						<Button type="submit" disabled={!capabilityText.trim() || loading} size="sm">
+							{loading ? 'Loading...' : 'Prompt'}
+						</Button>
+					</div>
 					<textarea
 						id="capability"
 						bind:value={capabilityText}
 						placeholder="Ask about AI capabilities..."
-						rows="4"
+						rows="3"
 						class="resize-vertical w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
 						required
 					></textarea>
-				</div>
-
-				<div class="flex justify-end">
-					<Button type="submit" disabled={!capabilityText.trim() || loading}>
-						{loading ? 'Loading...' : 'Prompt'}
-					</Button>
 				</div>
 			</form>
 			{#if error}
@@ -428,10 +599,10 @@
 		</div>
 
 		<!-- Scrollable resource group section -->
-		<div class="flex-1 overflow-y-auto p-6 pb-4">
-			<h2 class="mb-4 text-xl font-semibold text-gray-900">Create Resource Group</h2>
+		<div class="flex-1 overflow-y-auto p-4 pb-3">
+			<h2 class="mb-3 text-lg font-semibold text-gray-900">Create Resource Group</h2>
 
-			<div class="space-y-4">
+			<div class="space-y-3">
 				<div>
 					<Label for="rg-name">Name *</Label>
 					<Input
@@ -460,7 +631,11 @@
 				/>
 
 				{#if resourceGroupError}
-					<div class="rounded-md border border-red-400 bg-red-100 p-3 text-sm text-red-700">
+					<div
+						class="rounded-md border p-3 text-sm {resourceGroupError.startsWith('✅')
+							? 'border-green-400 bg-green-100 text-green-700'
+							: 'border-red-400 bg-red-100 text-red-700'}"
+					>
 						{resourceGroupError}
 					</div>
 				{/if}
@@ -496,37 +671,48 @@
 				<svelte:component this={TileLayer} url={'https://tile.openstreetmap.org/{z}/{x}/{y}.png'} />
 
 				<!-- Show clustered resource markers when not in analysis mode -->
-				{#if !showLocationAnalysis}
-					{#each clusteredResources as cluster}
+				{#if !showLocationAnalysis && clusteredResources.length > 0}
+					{#each clusteredResources as cluster (cluster.id)}
 						<svelte:component
 							this={Marker}
 							latLng={[cluster.latitude, cluster.longitude]}
 							options={{
 								icon: divIcon({
-									html: createClusteredIcon(cluster.count, cluster.resources[0]?.categoryId || 0),
+									html: createClusteredIcon(
+										cluster.count,
+										cluster.resources[0]?.categoryId || 0
+									),
 									className: 'custom-marker',
-									iconSize: [Math.min(54, 24 + cluster.count * 3), Math.min(54, 24 + cluster.count * 3)],
-									iconAnchor: [Math.min(27, 12 + cluster.count * 1.5), Math.min(27, 12 + cluster.count * 1.5)],
+									iconSize: [
+										Math.min(54, 24 + cluster.count * 3),
+										Math.min(54, 24 + cluster.count * 3)
+									],
+									iconAnchor: [
+										Math.min(27, 12 + cluster.count * 1.5),
+										Math.min(27, 12 + cluster.count * 1.5)
+									],
 									popupAnchor: [0, -Math.min(27, 12 + cluster.count * 1.5)]
 								})
 							}}
 						>
+							{@const categoryBreakdown = cluster.resources.reduce((acc: any, r: any) => {
+								const category = r.categoryName || 'Unknown';
+								acc[category] = (acc[category] || 0) + 1;
+								return acc;
+							}, {})}
 							<svelte:component this={Popup}>
 								<div class="min-w-48 max-w-80">
-									<h3 class="font-bold mb-2">Resource Cluster ({cluster.count} resources)</h3>
-									<div class="space-y-2 max-h-60 overflow-y-auto">
-										{#each cluster.resources as resource}
-											<div class="border-b border-gray-100 pb-2 last:border-b-0">
-												<h4 class="font-semibold text-sm">{resource.name}</h4>
-												{#if resource.categoryName}
-													<p class="text-xs text-gray-600">Category: {resource.categoryName}</p>
-												{/if}
-												{#if resource.description}
-													<p class="text-xs text-gray-500">{resource.description}</p>
-												{/if}
-											</div>
-										{/each}
-									</div>
+									<h3 class="mb-2 font-bold">
+										Resource Cluster ({cluster.count} Total)
+									</h3>
+
+									{#if Object.keys(categoryBreakdown).length > 1}
+										<div class="mb-3 rounded bg-gray-50 p-2">
+											{#each Object.entries(categoryBreakdown) as [category, count]}
+												<div class="text-xs text-gray-600">• {category}: {count}</div>
+											{/each}
+										</div>
+									{/if}
 								</div>
 							</svelte:component>
 						</svelte:component>
@@ -534,7 +720,7 @@
 				{/if}
 
 				<!-- Show location analysis markers -->
-				{#if showLocationAnalysis}
+				{#if showLocationAnalysis && locationAnalysis.length > 0}
 					{#each locationAnalysis as location}
 						<svelte:component
 							this={Marker}
@@ -559,16 +745,17 @@
 										{#each location.resourceGroups as rg}
 											<div class="mt-2 space-y-1 border-b border-gray-100 pb-2 last:border-b-0">
 												{#if rg.sources && rg.sources.length > 0}
-													{@const localUnits = rg.sources
-														.filter((s) => s.transportationTimeHours === 0)
-														.reduce((sum, s) => sum + s.unitsTransferred, 0)}
-													{@const transferredUnits = rg.sources
-														.filter((s) => s.transportationTimeHours > 0)
-														.reduce((sum, s) => sum + s.unitsTransferred, 0)}
+													{@const groupedSources = groupSources(rg.sources)}
+													{@const localUnits = groupedSources
+														.filter((s: any) => s.transportationTimeHours === 0)
+														.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
+													{@const transferredUnits = groupedSources
+														.filter((s: any) => s.transportationTimeHours > 0)
+														.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
 													{@const maxTransportTime = Math.max(
-														...rg.sources
-															.filter((s) => s.transportationTimeHours > 0)
-															.map((s) => s.transportationTimeHours),
+														...groupedSources
+															.filter((s: any) => s.transportationTimeHours > 0)
+															.map((s: any) => s.transportationTimeHours),
 														0
 													)}
 													<div class="flex justify-between">
@@ -603,41 +790,60 @@
 												{/if}
 
 												{#if rg.sources && rg.sources.length > 0}
+													{@const groupedSources = groupSources(rg.sources)}
 													<div class="mt-1">
 														<div class="mb-1 text-xs font-medium text-gray-700">Sources:</div>
 
 														<!-- Local Resources -->
-														{#each rg.sources.filter((s) => s.transportationTimeHours === 0) as source}
-															<div class="mb-1 rounded bg-green-50 px-2 py-1 text-xs text-gray-600">
+														{#each groupedSources.filter((s: any) => s.transportationTimeHours === 0) as source}
+															{@const typedSource = source as any}
+															{@const bottleneckColor = getBottleneckColor(
+																typedSource.categoryName
+															)}
+															<div
+																class="mb-1 rounded px-2 py-1 text-xs text-gray-600"
+																style="background-color: {bottleneckColor
+																	? bottleneckColor + '20'
+																	: '#f0fdf4'}; border-left: 3px solid {bottleneckColor ||
+																	'#10b981'}"
+															>
 																<div class="flex items-center justify-between">
-																	<span class="font-medium text-green-700"
-																		>🏠 {source.categoryName}</span
+																	<span
+																		class="font-medium"
+																		style="color: {bottleneckColor || '#15803d'}"
+																		>🏠 {typedSource.categoryName}</span
 																	>
-																	<span class="font-semibold text-green-800"
-																		>{source.unitsTransferred} local</span
+																	<span
+																		class="font-semibold"
+																		style="color: {bottleneckColor || '#166534'}"
+																		>{typedSource.unitsTransferred} local</span
 																	>
 																</div>
-																{#if source.remainingAtLocation !== undefined}
-																	<div class="mt-1 text-xs text-green-600">
-																		{source.remainingAtLocation} additional available at location
+																{#if typedSource.remainingAtLocation !== undefined}
+																	<div
+																		class="mt-1 text-xs"
+																		style="color: {bottleneckColor || '#16a34a'}"
+																	>
+																		{typedSource.remainingAtLocation} additional available at location
 																	</div>
 																{/if}
 															</div>
 														{/each}
 
 														<!-- Transferred Resources -->
-														{#each rg.sources.filter((s) => s.transportationTimeHours > 0) as source}
+														{#each groupedSources.filter((s: any) => s.transportationTimeHours > 0) as source}
+															{@const typedSource = source as any}
 															<div class="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-gray-600">
 																<div class="flex items-center justify-between">
 																	<span class="font-medium text-blue-700"
-																		>🚛 {source.categoryName}</span
+																		>🚛 {typedSource.categoryName}</span
 																	>
 																	<span class="font-semibold text-blue-800"
-																		>{source.unitsTransferred} units</span
+																		>{typedSource.unitsTransferred} units</span
 																	>
 																</div>
 																<div class="mt-1 text-xs text-blue-600">
-																	From {source.sourceLocationName} • {source.transportationTimeHours}h
+																	From {typedSource.sourceLocationName} • {typedSource.transportationTimeHours}h
 																	travel
 																</div>
 															</div>
@@ -646,20 +852,6 @@
 												{/if}
 											</div>
 										{/each}
-									{:else if location.resources && location.resources.length > 0}
-										<div class="mt-2 border-t border-gray-100 pt-2">
-											<div class="mb-1 text-xs font-medium text-gray-700">
-												Individual resources:
-											</div>
-											{#each location.resources as resource}
-												{#if resource.count > 0}
-													<div class="flex justify-between text-xs text-gray-600">
-														<span>📦 {resource.categoryName}</span>
-														<span class="font-semibold">{resource.count} units</span>
-													</div>
-												{/if}
-											{/each}
-										</div>
 									{:else}
 										<p class="mt-1 text-sm text-gray-500">No resource groups available</p>
 									{/if}
@@ -702,6 +894,7 @@
 					{:else if locationAnalysis.length === 0}
 						<p class="py-8 text-center text-sm text-gray-500">No analysis data available</p>
 					{:else}
+						<!-- Locations List -->
 						<div class="space-y-3">
 							{#each locationAnalysis as location}
 								<div class="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
@@ -712,16 +905,17 @@
 												<div class="rounded border border-gray-100 p-2">
 													<div class="text-sm">
 														{#if rg.sources && rg.sources.length > 0}
-															{@const localUnits = rg.sources
-																.filter((s) => s.transportationTimeHours === 0)
-																.reduce((sum, s) => sum + s.unitsTransferred, 0)}
-															{@const transferredUnits = rg.sources
-																.filter((s) => s.transportationTimeHours > 0)
-																.reduce((sum, s) => sum + s.unitsTransferred, 0)}
+															{@const groupedSources = groupSources(rg.sources)}
+															{@const localUnits = groupedSources
+																.filter((s: any) => s.transportationTimeHours === 0)
+																.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
+															{@const transferredUnits = groupedSources
+																.filter((s: any) => s.transportationTimeHours > 0)
+																.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
 															{@const maxTransportTime = Math.max(
-																...rg.sources
-																	.filter((s) => s.transportationTimeHours > 0)
-																	.map((s) => s.transportationTimeHours),
+																...groupedSources
+																	.filter((s: any) => s.transportationTimeHours > 0)
+																	.map((s: any) => s.transportationTimeHours),
 																0
 															)}
 															<div class="font-medium text-green-600">{localUnits} available</div>
@@ -746,45 +940,61 @@
 													</div>
 
 													{#if rg.sources && rg.sources.length > 0}
+														{@const groupedSources = groupSources(rg.sources)}
 														<div class="mt-2 border-t border-gray-100 pt-2">
 															<div class="mb-1 text-xs font-medium text-gray-700">Sources:</div>
 
 															<!-- Local Resources -->
-															{#each rg.sources.filter((s) => s.transportationTimeHours === 0) as source}
+															{#each groupedSources.filter((s: any) => s.transportationTimeHours === 0) as source}
+																{@const typedSource = source as any}
+																{@const bottleneckColor = getBottleneckColor(
+																	typedSource.categoryName
+																)}
 																<div
-																	class="mb-1 rounded bg-green-50 px-2 py-1 text-xs text-gray-600"
+																	class="mb-1 rounded px-2 py-1 text-xs text-gray-600"
+																	style="background-color: {bottleneckColor
+																		? bottleneckColor + '20'
+																		: '#f0fdf4'}; border-left: 3px solid {bottleneckColor ||
+																		'#10b981'}"
 																>
 																	<div class="flex items-center justify-between">
-																		<span class="font-medium text-green-700"
-																			>🏠 {source.categoryName}</span
+																		<span
+																			class="font-medium"
+																			style="color: {bottleneckColor || '#15803d'}"
+																			>🏠 {typedSource.categoryName}</span
 																		>
-																		<span class="font-semibold text-green-800"
-																			>{source.unitsTransferred} local</span
+																		<span
+																			class="font-semibold"
+																			style="color: {bottleneckColor || '#166534'}"
+																			>{typedSource.unitsTransferred} local</span
 																		>
 																	</div>
-																	{#if source.remainingAtLocation !== undefined}
-																		<div class="mt-1 text-xs text-green-600">
-																			{source.remainingAtLocation} additional available at location
+																	{#if typedSource.remainingAtLocation !== undefined}
+																		<div
+																			class="mt-1 text-xs"
+																			style="color: {bottleneckColor || '#16a34a'}"
+																		>
+																			{typedSource.remainingAtLocation} additional available at location
 																		</div>
 																	{/if}
 																</div>
 															{/each}
-
 															<!-- Transferred Resources -->
-															{#each rg.sources.filter((s) => s.transportationTimeHours > 0) as source}
+															{#each groupedSources.filter((s: any) => s.transportationTimeHours > 0) as source}
+																{@const typedSource = source as any}
 																<div
 																	class="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-gray-600"
 																>
 																	<div class="flex items-center justify-between">
 																		<span class="font-medium text-blue-700"
-																			>🚛 {source.categoryName}</span
+																			>🚛 {typedSource.categoryName}</span
 																		>
 																		<span class="font-semibold text-blue-800"
-																			>{source.unitsTransferred} units</span
+																			>{typedSource.unitsTransferred} units</span
 																		>
 																	</div>
 																	<div class="mt-1 text-xs text-blue-600">
-																		From {source.sourceLocationName} • {source.transportationTimeHours}h
+																		From {typedSource.sourceLocationName} • {typedSource.transportationTimeHours}h
 																		travel
 																	</div>
 																</div>
@@ -792,25 +1002,6 @@
 														</div>
 													{/if}
 												</div>
-											{/each}
-										</div>
-									{:else if location.resources && location.resources.length > 0}
-										<div class="mt-2 border-t border-gray-100 pt-2">
-											<div class="mb-1 text-xs font-medium text-gray-700">
-												Individual resources available:
-											</div>
-											{#each location.resources as resource}
-												{#if resource.count > 0}
-													<div class="mb-1 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
-														<div class="flex items-center justify-between">
-															<span class="font-medium text-gray-700"
-																>📦 {resource.categoryName}</span
-															>
-															<span class="font-semibold text-gray-800">{resource.count} units</span
-															>
-														</div>
-													</div>
-												{/if}
 											{/each}
 										</div>
 									{:else}
@@ -821,6 +1012,34 @@
 						</div>
 					{/if}
 				</div>
+
+				<!-- Fixed Bottlenecks Section at Bottom -->
+				{#if bottlenecks.length > 0 && !analysisLoading && locationAnalysis.length > 0}
+					<div class="flex-shrink-0 border-t border-gray-200 bg-white p-3">
+						<h4 class="mb-2 text-sm font-semibold text-gray-900">🚨 Resource Bottlenecks</h4>
+						<div class="space-y-2">
+							{#each bottlenecks as bottleneck}
+								<div
+									class="flex items-center justify-between rounded p-2 text-xs"
+									style="background-color: {bottleneck.color}20; border-left: 3px solid {bottleneck.color}"
+								>
+									<div class="flex-1">
+										<div class="font-medium text-gray-800">{bottleneck.categoryName}</div>
+										<div class="text-gray-600">
+											{bottleneck.totalUsed} used, {bottleneck.totalAvailable} available
+										</div>
+									</div>
+									<div
+										class="ml-2 rounded px-1 py-1 text-xs font-bold text-white"
+										style="background-color: {bottleneck.color}"
+									>
+										{bottleneck.criticalityLevel.toUpperCase()}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
