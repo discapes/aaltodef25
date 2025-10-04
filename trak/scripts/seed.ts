@@ -5,7 +5,6 @@ import { categories, locations, resources, resourceCategories, resourceGroups, r
 import { like, inArray } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
 
-
 // Get the database URL from environment
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -19,405 +18,527 @@ const pool = new pg.Pool({
 
 const db = drizzle(pool, { schema });
 
-async function seedDatabase() {
-    console.log('🌱 Starting database seeding...');
+// ========================================================================================
+// DATA MODELS - Define complete data structures with relationships
+// ========================================================================================
 
-    try {
-        // Clear existing mock data (keep real data)
-        console.log('🧹 Clearing existing mock data...');
+interface SeedCategory {
+    name: string;
+    description: string;
+}
 
-        // First, find all mock resources to get their IDs
-        const mockResources = await db.select().from(resources).where(like(resources.name, 'mock_%'));
-        const mockResourceIds = mockResources.map(r => r.id);
+interface SeedLocation {
+    cityName: string;
+}
 
-        // Delete resource-category relationships for mock resources
-        if (mockResourceIds.length > 0) {
-            await db.delete(resourceCategories).where(inArray(resourceCategories.resourceId, mockResourceIds));
+interface SeedResource {
+    name: string;
+    description: string;
+    locationName: string; // Reference to location by name
+    latitude: number;
+    longitude: number;
+    categoryNames: string[]; // References to categories by name
+    setupTimeHours: number; // Time required to set up this resource before use
+}
+
+interface SeedResourceGroup {
+    name: string;
+    description: string;
+    categoryNames: string[]; // References to categories by name
+    setupTimeHours: number; // Additional setup time after all resources are assembled
+}
+
+// ========================================================================================
+// SEED DATA DEFINITIONS
+// ========================================================================================
+
+// ========================================================================================
+// SEED DATA DEFINITIONS
+// ========================================================================================
+
+const SEED_CATEGORIES: SeedCategory[] = [
+    // Material categories
+    { name: 'drone battery', description: 'Battery for drone operations' },
+    { name: 'drone body', description: 'Main body/frame of a drone' },
+    { name: 'laptop', description: 'Portable computer' },
+    { name: 'tent', description: 'Portable shelter' },
+    { name: 'controller', description: 'Remote control device for drones' },
+    { name: 'laptop charger', description: 'Power adapter for laptops' },
+    { name: 'food (1 day for 1 person)', description: 'Daily food ration for one person' },
+    { name: 'water (1 liter)', description: 'One liter of drinking water' },
+    { name: 'electricity source', description: 'Power generation equipment' },
+    { name: 'first aid kit', description: 'Basic medical supplies for emergencies' },
+    { name: 'medical kit', description: 'Advanced medical equipment and supplies' },
+    { name: 'medical tools', description: 'Specialized medical instruments' },
+    { name: 'ambulance', description: 'Emergency medical vehicle' },
+    { name: 'car', description: 'Motor vehicle for transportation' },
+    { name: 'room', description: 'Enclosed space or facility' },
+
+    // People categories
+    { name: 'driver', description: 'Person capable of operating vehicles' },
+    { name: 'nurse', description: 'Healthcare professional' },
+    { name: 'doctor', description: 'Medical doctor' },
+    { name: 'hardware developer', description: 'Engineer specializing in hardware development' },
+    { name: 'drone operator', description: 'Person trained to operate drones' },
+    { name: 'software developer', description: 'Programmer and software engineer' },
+    { name: 'person', description: 'General human resource' },
+];
+
+const SEED_LOCATIONS: SeedLocation[] = [
+    { cityName: 'Helsinki' },
+    { cityName: 'Espoo' },
+    { cityName: 'Tampere' },
+    { cityName: 'Vantaa' },
+    { cityName: 'Oulu' },
+    { cityName: 'Turku' },
+    { cityName: 'Jyväskylä' },
+    { cityName: 'Lahti' },
+    { cityName: 'Kuopio' },
+    { cityName: 'Pori' },
+    { cityName: 'Joensuu' },
+    { cityName: 'Lappeenranta' },
+    { cityName: 'Hämeenlinna' },
+    { cityName: 'Vaasa' },
+    { cityName: 'Seinäjoki' },
+    { cityName: 'Rovaniemi' },
+];
+
+// Location coordinates (actual Finnish cities) - realistic populations for individual people
+const LOCATION_COORDS: Record<string, { lat: number; lon: number; population: number }> = {
+    'Helsinki': { lat: 60.1699, lon: 24.9384, population: 350 },
+    'Espoo': { lat: 60.2055, lon: 24.6559, population: 280 },
+    'Tampere': { lat: 61.4991, lon: 23.7871, population: 240 },
+    'Vantaa': { lat: 60.2934, lon: 25.0378, population: 220 },
+    'Oulu': { lat: 65.0121, lon: 25.4651, population: 200 },
+    'Turku': { lat: 60.4518, lon: 22.2666, population: 190 },
+    'Jyväskylä': { lat: 62.2426, lon: 25.7473, population: 140 },
+    'Lahti': { lat: 60.9827, lon: 25.6612, population: 120 },
+    'Kuopio': { lat: 62.8924, lon: 27.6780, population: 120 },
+    'Pori': { lat: 61.4851, lon: 21.7976, population: 85 },
+    'Joensuu': { lat: 62.6010, lon: 29.7636, population: 80 },
+    'Lappeenranta': { lat: 61.0587, lon: 28.1856, population: 75 },
+    'Hämeenlinna': { lat: 60.9959, lon: 24.4641, population: 70 },
+    'Vaasa': { lat: 63.0951, lon: 21.6165, population: 70 },
+    'Seinäjoki': { lat: 62.7903, lon: 22.8404, population: 65 },
+    'Rovaniemi': { lat: 66.5039, lon: 25.7294, population: 65 },
+};
+
+// Helper function to add variance to counts (±20% variation)
+function addVariance(baseCount: number): number {
+    const variance = 0.2; // 20% variance
+    const min = Math.round(baseCount * (1 - variance));
+    const max = Math.round(baseCount * (1 + variance));
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// Helper function to generate random coordinates near a city
+function randomCoordNear(baseLat: number, baseLon: number, radiusKm: number = 5): { lat: number; lon: number } {
+    const earthRadius = 6371;
+    const deltaLat = (Math.random() - 0.5) * 2 * (radiusKm / earthRadius) * (180 / Math.PI);
+    const deltaLon = (Math.random() - 0.5) * 2 * (radiusKm / earthRadius) * (180 / Math.PI) / Math.cos(baseLat * Math.PI / 180);
+
+    return {
+        lat: Number((baseLat + deltaLat).toFixed(4)),
+        lon: Number((baseLon + deltaLon).toFixed(4))
+    };
+}
+
+// Generate material resources for each location
+function generateMaterialResources(): SeedResource[] {
+    const resources: SeedResource[] = [];
+
+    Object.keys(LOCATION_COORDS).forEach(cityName => {
+        const coords = LOCATION_COORDS[cityName];
+        const baseCoord = { lat: coords.lat, lon: coords.lon };
+
+        // Standard materials for each location - each resource is ONE UNIT (with variance)
+        const baseMaterialCounts = {
+            'drone battery': 100,
+            'controller': 40,
+            'laptop': 120,
+            'car': 30,
+            'drone body': 100,
+            'electricity source': 30, // individual generators
+            'medical kit': 150,
+            'first aid kit': 200,
+            'food (1 day for 1 person)': 300,
+            'tent': 20,
+            'laptop charger': 120, // one per laptop potentially
+            'water (1 liter)': 500, // individual bottles
+            'medical tools': 50, // individual tools
+            'room': 10
+        };
+
+        // Apply variance to material counts for this city
+        const materialCounts: Record<string, number> = {};
+        Object.entries(baseMaterialCounts).forEach(([key, baseCount]) => {
+            materialCounts[key] = addVariance(baseCount);
+        });
+
+        // Ambulances (also cars) - individual vehicles with variance
+        const ambulanceCount = addVariance(10);
+        for (let i = 1; i <= ambulanceCount; i++) {
+            const coord = randomCoordNear(baseCoord.lat, baseCoord.lon);
+            resources.push({
+                name: `Ambulance ${i} - ${cityName}`,
+                description: `Emergency medical vehicle in ${cityName}`,
+                locationName: cityName,
+                latitude: coord.lat,
+                longitude: coord.lon,
+                categoryNames: ['ambulance', 'car'],
+                setupTimeHours: 0.5
+            });
         }
 
-        // Delete mock resources
-        await db.delete(resources).where(like(resources.name, 'mock_%'));
+        // Other materials
+        Object.entries(materialCounts).forEach(([categoryName, count]) => {
+            for (let i = 1; i <= count; i++) {
+                const coord = randomCoordNear(baseCoord.lat, baseCoord.lon);
+                let setupTime = 0;
 
-        // Delete mock resource groups and their relationships
-        const mockResourceGroups = await db.select().from(resourceGroups).where(like(resourceGroups.name, 'mock_%'));
-        const mockResourceGroupIds = mockResourceGroups.map(rg => rg.id);
+                // Set setup times based on material type
+                if (categoryName === 'electricity source') setupTime = 2.0;
+                else if (categoryName === 'medical kit') setupTime = 0.5;
+                else if (categoryName === 'tent') setupTime = 1.0;
+                else if (categoryName === 'laptop') setupTime = 0.25;
+                else if (categoryName === 'drone body') setupTime = 0.5;
+                else setupTime = 0.1;
 
-        // Delete resource group-category relationships for mock resource groups
-        if (mockResourceGroupIds.length > 0) {
-            await db.delete(resourceGroupCategories).where(inArray(resourceGroupCategories.resourceGroupId, mockResourceGroupIds));
+                resources.push({
+                    name: `${categoryName.charAt(0).toUpperCase() + categoryName.slice(1)} ${i} - ${cityName}`,
+                    description: `${categoryName} located in ${cityName}`,
+                    locationName: cityName,
+                    latitude: coord.lat,
+                    longitude: coord.lon,
+                    categoryNames: [categoryName],
+                    setupTimeHours: setupTime
+                });
+            }
+        });
+    });
+
+    // Special factories
+    // Battery factory in Turku
+    const turkuCoords = LOCATION_COORDS['Turku'];
+    const turkuCoord = randomCoordNear(turkuCoords.lat, turkuCoords.lon);
+    resources.push({
+        name: 'Battery Factory - Turku',
+        description: 'Large-scale battery manufacturing facility',
+        locationName: 'Turku',
+        latitude: turkuCoord.lat,
+        longitude: turkuCoord.lon,
+        categoryNames: ['drone battery'],
+        setupTimeHours: 240 // 10 days
+    });
+
+    // Drone body factory in Kuopio
+    const kuopioCoords = LOCATION_COORDS['Kuopio'];
+    const kuopioCoord = randomCoordNear(kuopioCoords.lat, kuopioCoords.lon);
+    resources.push({
+        name: 'Drone Body Factory - Kuopio',
+        description: 'Drone manufacturing facility',
+        locationName: 'Kuopio',
+        latitude: kuopioCoord.lat,
+        longitude: kuopioCoord.lon,
+        categoryNames: ['drone body'],
+        setupTimeHours: 168 // 1 week
+    });
+
+    return resources;
+}
+
+// Generate people resources for each location
+function generatePeopleResources(): SeedResource[] {
+    const resources: SeedResource[] = [];
+    const firstNames = ['Aino', 'Eino', 'Maija', 'Paavo', 'Liisa', 'Mikko', 'Anna', 'Juha', 'Sari', 'Matti', 'Hanna', 'Pekka', 'Mari', 'Jari', 'Elina', 'Heikki', 'Kaisa', 'Timo', 'Pirjo', 'Kari'];
+    const lastNames = ['Virtanen', 'Korhonen', 'Nieminen', 'Mäkinen', 'Hämäläinen', 'Laine', 'Heikkinen', 'Koskinen', 'Järvinen', 'Lehtonen', 'Saarinen', 'Salminen', 'Heinonen', 'Niemi', 'Hakkarainen', 'Mattila', 'Turunen', 'Laitinen', 'Rantala', 'Kallio'];
+
+    Object.keys(LOCATION_COORDS).forEach(cityName => {
+        const coords = LOCATION_COORDS[cityName];
+        const baseCoord = { lat: coords.lat, lon: coords.lon };
+        // Add variance to population count for this city
+        const populationCount = addVariance(coords.population);
+
+        for (let i = 1; i <= populationCount; i++) {
+            const coord = randomCoordNear(baseCoord.lat, baseCoord.lon);
+            const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+            const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+
+            const categories: string[] = ['person']; // 100% are persons
+
+            // 90% are drivers
+            if (Math.random() < 0.9) categories.push('driver');
+
+            // 50% are drone operators
+            if (Math.random() < 0.5) categories.push('drone operator');
+
+            // 20% are nurses
+            if (Math.random() < 0.2) categories.push('nurse');
+
+            // 20% are software developers
+            if (Math.random() < 0.2) categories.push('software developer');
+
+            // 15% are hardware developers
+            if (Math.random() < 0.15) categories.push('hardware developer');
+
+            // 2% are doctors
+            if (Math.random() < 0.02) categories.push('doctor');
+
+            resources.push({
+                name: `${firstName} ${lastName}`,
+                description: `Resident of ${cityName}`,
+                locationName: cityName,
+                latitude: coord.lat,
+                longitude: coord.lon,
+                categoryNames: categories,
+                setupTimeHours: 0
+            });
         }
+    });
 
-        // Delete mock resource groups
-        await db.delete(resourceGroups).where(like(resourceGroups.name, 'mock_%'));
+    return resources;
+}
 
-        // Delete mock categories and locations
-        await db.delete(categories).where(like(categories.name, 'mock_%'));
-        await db.delete(locations).where(like(locations.cityName, 'mock_%'));
+const SEED_RESOURCES: SeedResource[] = [
+    ...generateMaterialResources(),
+    ...generatePeopleResources()
+];
 
-        // Insert categories (skills, abilities, and tools)
+const SEED_RESOURCE_GROUPS: SeedResourceGroup[] = [
+    {
+        name: 'Basic Drone Operation Unit',
+        description: 'Essential components for basic drone operations',
+        categoryNames: ['drone body', 'drone battery', 'controller', 'drone operator'],
+        setupTimeHours: 1.0
+    },
+    {
+        name: 'Extended Drone Operation Unit',
+        description: 'Enhanced drone operations with support equipment',
+        categoryNames: ['drone body', 'drone battery', 'controller', 'drone operator', 'laptop', 'laptop charger'],
+        setupTimeHours: 1.5
+    },
+    {
+        name: 'Medical Emergency Response Team',
+        description: 'Complete medical emergency response capability',
+        categoryNames: ['doctor', 'nurse', 'driver', 'ambulance', 'medical kit', 'first aid kit'],
+        setupTimeHours: 0.5
+    },
+    {
+        name: 'Field Hospital Unit',
+        description: 'Mobile medical facility with comprehensive care',
+        categoryNames: ['doctor', 'nurse', 'medical tools', 'medical kit', 'electricity source', 'tent'],
+        setupTimeHours: 4.0
+    },
+    {
+        name: 'Mobile Command Center',
+        description: 'Coordination and communication hub',
+        categoryNames: ['software developer', 'hardware developer', 'laptop', 'electricity source', 'tent'],
+        setupTimeHours: 2.0
+    },
+    {
+        name: 'Emergency Supply Distribution',
+        description: 'Food and water distribution capability',
+        categoryNames: ['driver', 'car', 'food (1 day for 1 person)', 'water (1 liter)', 'person'],
+        setupTimeHours: 1.0
+    },
+    {
+        name: 'Reconnaissance Drone Squadron',
+        description: 'Multi-drone surveillance and reconnaissance',
+        categoryNames: ['drone body', 'drone battery', 'controller', 'drone operator', 'laptop'],
+        setupTimeHours: 2.0
+    },
+    {
+        name: 'Mobile Tech Support Unit',
+        description: 'Technical support and equipment maintenance',
+        categoryNames: ['hardware developer', 'software developer', 'laptop', 'laptop charger', 'car'],
+        setupTimeHours: 1.0
+    }
+];
+
+// ========================================================================================
+// ROBUST SEEDING FUNCTIONS
+// ========================================================================================
+
+async function clearAllData() {
+    console.log('🧹 Clearing all existing data...');
+
+    // Get all existing resource IDs
+    const allResources = await db.select().from(resources);
+    const allResourceIds = allResources.map(r => r.id);
+
+    // Delete all resource-category relationships
+    if (allResourceIds.length > 0) {
+        await db.delete(resourceCategories).where(inArray(resourceCategories.resourceId, allResourceIds));
+    }
+
+    // Delete all resources
+    await db.delete(resources);
+
+    // Get all existing resource group IDs
+    const allResourceGroups = await db.select().from(resourceGroups);
+    const allResourceGroupIds = allResourceGroups.map(rg => rg.id);
+
+    // Delete all resource group-category relationships
+    if (allResourceGroupIds.length > 0) {
+        await db.delete(resourceGroupCategories).where(inArray(resourceGroupCategories.resourceGroupId, allResourceGroupIds));
+    }
+
+    // Delete all resource groups
+    await db.delete(resourceGroups);
+
+    // Delete all categories and locations
+    await db.delete(categories);
+    await db.delete(locations);
+}
+
+async function seedDatabaseRobust() {
+    console.log('🌱 Starting robust database seeding...');
+
+    // Use a database transaction to ensure atomicity
+    return await db.transaction(async (tx) => {
+        // Clear all existing data first
+        await clearAllData();
+
         console.log('📂 Inserting categories...');
-        const insertedCategories = await db.insert(categories).values([
-            // Technical Skills
-            { name: 'mock_Web Development', description: 'Frontend and backend web development skills' },
-            { name: 'mock_Embedded Systems', description: 'Embedded hardware and software development' },
-            { name: 'mock_Network Administration', description: 'Computer network setup and maintenance' },
-            { name: 'mock_Database Management', description: 'Database design, administration and optimization' },
+        const insertedCategories = await tx.insert(categories).values(SEED_CATEGORIES).returning();
 
-            // Medical Skills
-            { name: 'mock_First Aid', description: 'Basic emergency medical care and treatment' },
-            { name: 'mock_Nursing', description: 'Professional nursing and patient care' },
-            { name: 'mock_Surgery', description: 'Surgical procedures and medical operations' },
-            { name: 'mock_Emergency Medicine', description: 'Emergency medical response and trauma care' },
+        // Create name-to-id mapping for categories
+        const categoryMap = new Map<string, number>();
+        insertedCategories.forEach(cat => categoryMap.set(cat.name, cat.id));
 
-            // Manual Tools
-            { name: 'mock_Hammer', description: 'Basic construction and repair tool' },
-            { name: 'mock_Shovel', description: 'Digging and earth moving tool' },
-            { name: 'mock_Wrench Set', description: 'Mechanical repair and assembly tools' },
-            { name: 'mock_Chainsaw', description: 'Power tool for cutting wood and debris' },
-
-            // Resources/Supplies
-            { name: 'mock_Fuel (1L)', description: 'One liter of gasoline or diesel fuel' },
-            { name: 'mock_Medical Supplies', description: 'Basic medical equipment and supplies' },
-            { name: 'mock_Food Rations', description: 'Emergency food supplies for one person/day' },
-            { name: 'mock_Communication Radio', description: 'Two-way radio communication device' },
-
-            { name: 'mock_Water Supply', description: 'Fresh water supply' },
-
-        ]).returning();
-
-        // Insert locations
         console.log('📍 Inserting locations...');
-        const insertedLocations = await db.insert(locations).values([
-            { cityName: 'mock_Helsinki' },
-            { cityName: 'mock_Tampere' },
-            { cityName: 'mock_Turku' },
-            { cityName: 'mock_Oulu' },
-            { cityName: 'mock_Jyväskylä' },
-            { cityName: 'mock_Lahti' },
-            { cityName: 'mock_Kuopio' },
-            { cityName: 'mock_Pori' },
-        ]).returning();
+        const insertedLocations = await tx.insert(locations).values(SEED_LOCATIONS).returning();
 
-        // Insert resources (people and equipment)
-        console.log('👥 Inserting resources...');
-        const resourcesData = [
-            // Helsinki resources
-            { name: 'mock_John Smith', description: 'Senior web developer with 8 years experience', locationId: insertedLocations[0].id, latitude: 60.1699, longitude: 24.9384 },
-            { name: 'mock_Maria Virtanen', description: 'Registered nurse specializing in emergency care', locationId: insertedLocations[0].id, latitude: 60.1881, longitude: 24.9200 },
-            { name: 'mock_Ahmed Hassan', description: 'Embedded systems engineer', locationId: insertedLocations[0].id, latitude: 60.1756, longitude: 24.9342 },
-            { name: 'mock_Emergency Toolkit A', description: 'Complete emergency response toolkit', locationId: insertedLocations[0].id, latitude: 60.1612, longitude: 24.9521 },
-            { name: 'mock_Medical Station 1', description: 'Mobile medical equipment station', locationId: insertedLocations[0].id, latitude: 60.1695, longitude: 24.9354 },
-            { name: 'mock_Dr. Sarah Johnson', description: 'Emergency medicine physician', locationId: insertedLocations[0].id, latitude: 60.1733, longitude: 24.9417 },
-            { name: 'mock_Freshwater well', description: 'Fresh water well', locationId: insertedLocations[0].id, latitude: 60.1833, longitude: 24.9517 },
+        // Create name-to-id mapping for locations
+        const locationMap = new Map<string, number>();
+        insertedLocations.forEach(loc => locationMap.set(loc.cityName, loc.id));
 
-            // Tampere resources
-            { name: 'mock_Mikko Korhonen', description: 'Network administrator and IT specialist', locationId: insertedLocations[1].id, latitude: 61.4991, longitude: 23.7871 },
-            { name: 'mock_Anna Lindberg', description: 'Database administrator with medical data experience', locationId: insertedLocations[1].id, latitude: 61.4981, longitude: 23.7619 },
-            { name: 'mock_Construction Team A', description: 'Team with construction tools and equipment', locationId: insertedLocations[1].id, latitude: 61.4978, longitude: 23.7610 },
-            { name: 'mock_Fuel Depot 1', description: 'Emergency fuel storage (500L capacity)', locationId: insertedLocations[1].id, latitude: 61.4985, longitude: 23.7604 },
-            { name: 'mock_Food Distribution Point', description: 'Emergency food supplies station', locationId: insertedLocations[1].id, latitude: 61.4953, longitude: 23.7582 },
+        console.log('👥 Inserting resources with relationships...');
+        const resourcesWithLocationIds = SEED_RESOURCES.map(resource => {
+            const locationId = locationMap.get(resource.locationName);
+            if (!locationId) {
+                throw new Error(`Location not found: ${resource.locationName}`);
+            }
+            return {
+                name: resource.name,
+                description: resource.description,
+                locationId,
+                latitude: resource.latitude,
+                longitude: resource.longitude,
+                setupTimeHours: resource.setupTimeHours
+            };
+        });
 
-            // Turku resources
-            { name: 'mock_Surgeon Team', description: 'Surgical team with mobile equipment', locationId: insertedLocations[2].id, latitude: 60.4518, longitude: 22.2666 },
-            { name: 'mock_Paramedic Unit', description: 'Emergency medical response team', locationId: insertedLocations[2].id, latitude: 60.4515, longitude: 22.2581 },
-            { name: 'mock_Heavy Equipment Operator', description: 'Operator with chainsaw and heavy tools', locationId: insertedLocations[2].id, latitude: 60.4489, longitude: 22.2555 },
-            { name: 'mock_Communication Hub', description: 'Radio communication equipment and operator', locationId: insertedLocations[2].id, latitude: 60.4495, longitude: 22.2638 },
+        // Insert resources in batches to avoid stack overflow
+        const batchSize = 1000;
+        type InsertedResource = {
+            id: number;
+            name: string;
+            description: string | null;
+            locationId: number;
+            latitude: number;
+            longitude: number;
+            setupTimeHours: number;
+            createdAt: Date | null;
+            updatedAt: Date | null;
+        };
+        const insertedResources: InsertedResource[] = [];
 
-            // Oulu resources
-            { name: 'mock_Emergency Response Coordinator', description: 'Coordinator with first aid certification', locationId: insertedLocations[3].id, latitude: 65.0121, longitude: 25.4651 },
-            { name: 'mock_IT Support Team', description: 'Technical support team with equipment', locationId: insertedLocations[3].id, latitude: 65.0141, longitude: 25.4689 },
-            { name: 'mock_Mobile Medical Unit', description: 'Vehicle with medical supplies and equipment', locationId: insertedLocations[3].id, latitude: 65.0134, longitude: 25.4712 },
+        for (let i = 0; i < resourcesWithLocationIds.length; i += batchSize) {
+            const batch = resourcesWithLocationIds.slice(i, i + batchSize);
+            const batchResult = await tx.insert(resources).values(batch).returning();
+            insertedResources.push(...batchResult);
+            console.log(`   Inserted batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(resourcesWithLocationIds.length / batchSize)} (${batchResult.length} resources)`);
+        }
 
-            // Other cities with fewer resources
-            { name: 'mock_Nurse Practitioner', description: 'Advanced practice nurse', locationId: insertedLocations[4].id, latitude: 62.2426, longitude: 25.7473 },
-            { name: 'mock_Maintenance Technician', description: 'General maintenance with tool kit', locationId: insertedLocations[5].id, latitude: 60.9827, longitude: 25.6612 },
-            { name: 'mock_Emergency Supplies Cache', description: 'Emergency supply storage point', locationId: insertedLocations[6].id, latitude: 62.8924, longitude: 27.6780 },
-            { name: 'mock_Volunteer Coordinator', description: 'First aid trained volunteer coordinator', locationId: insertedLocations[7].id, latitude: 61.4851, longitude: 21.7976 },
-
-            // Additional Helsinki resources
-            { name: 'mock_Senior Web Developer Lisa Chen', description: 'Full-stack web developer', locationId: insertedLocations[0].id, latitude: 60.1702, longitude: 24.9388 },
-            { name: 'mock_Embedded Engineer Petri Salo', description: 'IoT and embedded systems specialist', locationId: insertedLocations[0].id, latitude: 60.1756, longitude: 24.9350 },
-            { name: 'mock_Network Engineer Sasha Volkov', description: 'Network infrastructure specialist', locationId: insertedLocations[0].id, latitude: 60.1720, longitude: 24.9365 },
-            { name: 'mock_Database Architect Emma Wilson', description: 'Senior database administrator', locationId: insertedLocations[0].id, latitude: 60.1680, longitude: 24.9340 },
-            { name: 'mock_First Aid Instructor Matti Virtanen', description: 'Certified first aid trainer', locationId: insertedLocations[0].id, latitude: 60.1715, longitude: 24.9395 },
-            { name: 'mock_Head Nurse Kristiina Laakso', description: 'Senior nursing supervisor', locationId: insertedLocations[0].id, latitude: 60.1685, longitude: 24.9375 },
-
-            // Additional Tampere resources  
-            { name: 'mock_Web Developer Tommi Hakkarainen', description: 'Frontend specialist', locationId: insertedLocations[1].id, latitude: 61.4995, longitude: 23.7875 },
-            { name: 'mock_Systems Administrator Aino Koskinen', description: 'Linux systems specialist', locationId: insertedLocations[1].id, latitude: 61.4985, longitude: 23.7625 },
-            { name: 'mock_Emergency Nurse Elina Mattila', description: 'Trauma care specialist', locationId: insertedLocations[1].id, latitude: 61.4975, longitude: 23.7615 },
-            { name: 'mock_First Aid Responder Jari Nieminen', description: 'Volunteer emergency responder', locationId: insertedLocations[1].id, latitude: 61.4970, longitude: 23.7605 },
-
-            // Additional Turku resources
-            { name: 'mock_DevOps Engineer Sampo Rautiainen', description: 'Network and deployment specialist', locationId: insertedLocations[2].id, latitude: 60.4522, longitude: 22.2670 },
-            { name: 'mock_Database Developer Mari Huhtala', description: 'Database optimization expert', locationId: insertedLocations[2].id, latitude: 60.4520, longitude: 22.2585 },
-            { name: 'mock_Emergency Physician Dr. Kari Mäkelä', description: 'Emergency department doctor', locationId: insertedLocations[2].id, latitude: 60.4493, longitude: 22.2559 },
-            { name: 'mock_Paramedic Supervisor Anna-Liisa Kero', description: 'Senior paramedic', locationId: insertedLocations[2].id, latitude: 60.4499, longitude: 22.2642 },
-
-            // Additional Oulu resources
-            { name: 'mock_Full-Stack Developer Ville Karhu', description: 'Web and mobile developer', locationId: insertedLocations[3].id, latitude: 65.0125, longitude: 25.4655 },
-            { name: 'mock_Network Technician Hanna Järvinen', description: 'Network maintenance specialist', locationId: insertedLocations[3].id, latitude: 65.0145, longitude: 25.4693 },
-            { name: 'mock_Critical Care Nurse Tuula Rantala', description: 'ICU nursing specialist', locationId: insertedLocations[3].id, latitude: 65.0138, longitude: 25.4716 },
-
-            // Additional resources in other cities
-            { name: 'mock_Software Engineer Aleksi Heikkilä', description: 'Backend developer', locationId: insertedLocations[4].id, latitude: 62.2430, longitude: 25.7477 },
-            { name: 'mock_Network Admin Paula Saarinen', description: 'IT infrastructure manager', locationId: insertedLocations[4].id, latitude: 62.2422, longitude: 25.7469 },
-            { name: 'mock_Emergency Nurse Coordinator Leena Koivisto', description: 'Nursing team leader', locationId: insertedLocations[5].id, latitude: 60.9831, longitude: 25.6616 },
-            { name: 'mock_First Aid Trainer Jukka Laine', description: 'Safety training specialist', locationId: insertedLocations[5].id, latitude: 60.9823, longitude: 25.6608 },
-            { name: 'mock_Database Specialist Riikka Ojala', description: 'Data management expert', locationId: insertedLocations[6].id, latitude: 62.8928, longitude: 27.6784 },
-            { name: 'mock_Web Developer Antti Kallio', description: 'E-commerce developer', locationId: insertedLocations[6].id, latitude: 62.8920, longitude: 27.6776 },
-            { name: 'mock_Emergency Coordinator Päivi Aho', description: 'Crisis management specialist', locationId: insertedLocations[7].id, latitude: 61.4855, longitude: 21.7980 },
-            { name: 'mock_Senior Nurse Marko Lindström', description: 'Clinical nurse specialist', locationId: insertedLocations[7].id, latitude: 61.4847, longitude: 21.7972 },
-        ];
-
-        const insertedResources = await db.insert(resources).values(resourcesData).returning();
-
-        // Create resource-category relationships
         console.log('🔗 Creating resource-category relationships...');
         const resourceCategoryData: { resourceId: number; categoryId: number }[] = [];
 
-        // Helper function to find category by name
-        const findCategory = (name: string): number | undefined =>
-            insertedCategories.find(cat => cat.name === name)?.id;
+        for (let i = 0; i < insertedResources.length; i++) {
+            const resource = insertedResources[i];
+            const seedResource = SEED_RESOURCES[i];
 
-        // Assign skills and tools to resources
-        for (const resource of insertedResources) {
-            // Technical Skills
-            if (resource.name.toLowerCase().includes('web developer') || resource.name.toLowerCase().includes('john smith')) {
-                const categoryId = findCategory('mock_Web Development');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('embedded') || resource.name.toLowerCase().includes('ahmed hassan')) {
-                const categoryId = findCategory('mock_Embedded Systems');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('network') || resource.name.toLowerCase().includes('mikko korhonen') || resource.name.toLowerCase().includes('it support')) {
-                const categoryId = findCategory('mock_Network Administration');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('database') || resource.name.toLowerCase().includes('anna lindberg')) {
-                const categoryId = findCategory('mock_Database Management');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-
-            // Medical Skills
-            if (resource.name.toLowerCase().includes('first aid') || resource.name.toLowerCase().includes('coordinator')) {
-                const categoryId = findCategory('mock_First Aid');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('nurse') || resource.name.toLowerCase().includes('maria virtanen')) {
-                const categoryId = findCategory('mock_Nursing');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('surgeon') || resource.name.toLowerCase().includes('surgery')) {
-                const categoryId = findCategory('mock_Surgery');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('emergency medicine') || resource.name.toLowerCase().includes('dr.') || resource.name.toLowerCase().includes('paramedic')) {
-                const categoryId = findCategory('mock_Emergency Medicine');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-
-            // Tools and Equipment
-            if (resource.name.toLowerCase().includes('toolkit') || resource.name.toLowerCase().includes('construction') || resource.name.toLowerCase().includes('maintenance')) {
-                const categoryId = findCategory('mock_Hammer');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-                const shovelId = findCategory('mock_Shovel');
-                if (shovelId) resourceCategoryData.push({ resourceId: resource.id, categoryId: shovelId });
-                const wrenchId = findCategory('mock_Wrench Set');
-                if (wrenchId) resourceCategoryData.push({ resourceId: resource.id, categoryId: wrenchId });
-            }
-            if (resource.name.toLowerCase().includes('heavy equipment') || resource.name.toLowerCase().includes('chainsaw')) {
-                const categoryId = findCategory('mock_Chainsaw');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-
-            // Resources and Supplies
-            if (resource.name.toLowerCase().includes('fuel')) {
-                const categoryId = findCategory('mock_Fuel (1L)');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('medical') && (resource.name.toLowerCase().includes('station') || resource.name.toLowerCase().includes('unit') || resource.name.toLowerCase().includes('supplies'))) {
-                const categoryId = findCategory('mock_Medical Supplies');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('food')) {
-                const categoryId = findCategory('mock_Food Rations');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('communication')) {
-                const categoryId = findCategory('mock_Communication Radio');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
-            }
-            if (resource.name.toLowerCase().includes('water')) {
-                const categoryId = findCategory('mock_Water Supply');
-                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
+            for (const categoryName of seedResource.categoryNames) {
+                const categoryId = categoryMap.get(categoryName);
+                if (!categoryId) {
+                    throw new Error(`Category not found: ${categoryName}`);
+                }
+                resourceCategoryData.push({
+                    resourceId: resource.id,
+                    categoryId
+                });
             }
         }
 
-        await db.insert(resourceCategories).values(resourceCategoryData);
+        if (resourceCategoryData.length > 0) {
+            // Insert resource-category relationships in batches
+            const batchSize = 1000;
+            for (let i = 0; i < resourceCategoryData.length; i += batchSize) {
+                const batch = resourceCategoryData.slice(i, i + batchSize);
+                await tx.insert(resourceCategories).values(batch);
+                console.log(`   Inserted resource-category batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(resourceCategoryData.length / batchSize)} (${batch.length} relationships)`);
+            }
+        }
 
-        // Insert resource groups
         console.log('🏢 Inserting resource groups...');
-        const insertedResourceGroups = await db.insert(resourceGroups).values([
-            { name: 'mock_Medical Emergency Response Unit', description: 'Complete medical emergency response capability including personnel and equipment' },
-            { name: 'mock_Firefighting Force', description: 'Fire suppression and rescue operations team with equipment' },
-            { name: 'mock_IT Support Center', description: 'Technical support and infrastructure maintenance team' },
-            { name: 'mock_Field Hospital', description: 'Mobile medical facility with surgical capabilities' },
-            { name: 'mock_Emergency Communications Hub', description: 'Communication coordination center with radio equipment' },
-            { name: 'mock_Construction and Repair Team', description: 'Infrastructure repair and construction capabilities' },
-            { name: 'mock_Emergency Supply Distribution', description: 'Food, water, and essential supplies distribution network' },
-            { name: 'mock_Search and Rescue Team', description: 'Personnel search, rescue, and recovery operations' },
-            { name: 'mock_Database and Information Systems', description: 'Data management and information systems support' },
-            { name: 'mock_Mobile Command Center', description: 'Coordination and command capabilities for emergency response' }
-        ]).returning();
+        const resourceGroupsData = SEED_RESOURCE_GROUPS.map(rg => ({
+            name: rg.name,
+            description: rg.description,
+            setupTimeHours: rg.setupTimeHours
+        }));
 
-        // Create resource group - category relationships
+        const insertedResourceGroups = await tx.insert(resourceGroups).values(resourceGroupsData).returning();
+
         console.log('🔗 Creating resource group-category relationships...');
         const resourceGroupCategoryData: { resourceGroupId: number; categoryId: number }[] = [];
 
-        // Medical Emergency Response Unit
-        const medicalUnitId = insertedResourceGroups.find(rg => rg.name === 'mock_Medical Emergency Response Unit')?.id;
-        if (medicalUnitId) {
-            const firstAidId = findCategory('mock_First Aid');
-            const nursingId = findCategory('mock_Nursing');
-            const emergencyMedId = findCategory('mock_Emergency Medicine');
-            const medicalSuppliesId = findCategory('mock_Medical Supplies');
-            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: firstAidId });
-            if (nursingId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: nursingId });
-            if (emergencyMedId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: emergencyMedId });
-            if (medicalSuppliesId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: medicalSuppliesId });
+        for (let i = 0; i < insertedResourceGroups.length; i++) {
+            const resourceGroup = insertedResourceGroups[i];
+            const seedResourceGroup = SEED_RESOURCE_GROUPS[i];
+
+            for (const categoryName of seedResourceGroup.categoryNames) {
+                const categoryId = categoryMap.get(categoryName);
+                if (!categoryId) {
+                    throw new Error(`Category not found: ${categoryName} for resource group: ${seedResourceGroup.name}`);
+                }
+                resourceGroupCategoryData.push({
+                    resourceGroupId: resourceGroup.id,
+                    categoryId
+                });
+            }
         }
 
-        // Firefighting Force
-        const firefightingId = insertedResourceGroups.find(rg => rg.name === 'mock_Firefighting Force')?.id;
-        if (firefightingId) {
-            const chainsawId = findCategory('mock_Chainsaw');
-            const wrenchSetId = findCategory('mock_Wrench Set');
-            const firstAidId = findCategory('mock_First Aid');
-            const fuelId = findCategory('mock_Fuel (1L)');
-            if (chainsawId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: chainsawId });
-            if (wrenchSetId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: wrenchSetId });
-            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: firstAidId });
-            if (fuelId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: fuelId });
+        if (resourceGroupCategoryData.length > 0) {
+            await tx.insert(resourceGroupCategories).values(resourceGroupCategoryData);
         }
 
-        // IT Support Center
-        const itSupportId = insertedResourceGroups.find(rg => rg.name === 'mock_IT Support Center')?.id;
-        if (itSupportId) {
-            const webDevId = findCategory('mock_Web Development');
-            const networkAdminId = findCategory('mock_Network Administration');
-            const dbMgmtId = findCategory('mock_Database Management');
-            const embeddedId = findCategory('mock_Embedded Systems');
-            if (webDevId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: webDevId });
-            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: networkAdminId });
-            if (dbMgmtId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: dbMgmtId });
-            if (embeddedId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: embeddedId });
-        }
-
-        // Field Hospital
-        const fieldHospitalId = insertedResourceGroups.find(rg => rg.name === 'mock_Field Hospital')?.id;
-        if (fieldHospitalId) {
-            const surgeryId = findCategory('mock_Surgery');
-            const nursingId = findCategory('mock_Nursing');
-            const emergencyMedId = findCategory('mock_Emergency Medicine');
-            const medicalSuppliesId = findCategory('mock_Medical Supplies');
-            if (surgeryId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: surgeryId });
-            if (nursingId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: nursingId });
-            if (emergencyMedId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: emergencyMedId });
-            if (medicalSuppliesId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: medicalSuppliesId });
-        }
-
-        // Emergency Communications Hub
-        const commHubId = insertedResourceGroups.find(rg => rg.name === 'mock_Emergency Communications Hub')?.id;
-        if (commHubId) {
-            const commRadioId = findCategory('mock_Communication Radio');
-            const networkAdminId = findCategory('mock_Network Administration');
-            const embeddedId = findCategory('mock_Embedded Systems');
-            if (commRadioId) resourceGroupCategoryData.push({ resourceGroupId: commHubId, categoryId: commRadioId });
-            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: commHubId, categoryId: networkAdminId });
-            if (embeddedId) resourceGroupCategoryData.push({ resourceGroupId: commHubId, categoryId: embeddedId });
-        }
-
-        // Construction and Repair Team
-        const constructionId = insertedResourceGroups.find(rg => rg.name === 'mock_Construction and Repair Team')?.id;
-        if (constructionId) {
-            const hammerId = findCategory('mock_Hammer');
-            const shovelId = findCategory('mock_Shovel');
-            const wrenchSetId = findCategory('mock_Wrench Set');
-            const chainsawId = findCategory('mock_Chainsaw');
-            if (hammerId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: hammerId });
-            if (shovelId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: shovelId });
-            if (wrenchSetId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: wrenchSetId });
-            if (chainsawId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: chainsawId });
-        }
-
-        // Emergency Supply Distribution
-        const supplyDistId = insertedResourceGroups.find(rg => rg.name === 'mock_Emergency Supply Distribution')?.id;
-        if (supplyDistId) {
-            const foodRationsId = findCategory('mock_Food Rations');
-            const waterSupplyId = findCategory('mock_Water Supply');
-            const fuelId = findCategory('mock_Fuel (1L)');
-            if (foodRationsId) resourceGroupCategoryData.push({ resourceGroupId: supplyDistId, categoryId: foodRationsId });
-            if (waterSupplyId) resourceGroupCategoryData.push({ resourceGroupId: supplyDistId, categoryId: waterSupplyId });
-            if (fuelId) resourceGroupCategoryData.push({ resourceGroupId: supplyDistId, categoryId: fuelId });
-        }
-
-        // Search and Rescue Team
-        const sarId = insertedResourceGroups.find(rg => rg.name === 'mock_Search and Rescue Team')?.id;
-        if (sarId) {
-            const firstAidId = findCategory('mock_First Aid');
-            const emergencyMedId = findCategory('mock_Emergency Medicine');
-            const commRadioId = findCategory('mock_Communication Radio');
-            const chainsawId = findCategory('mock_Chainsaw');
-            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: firstAidId });
-            if (emergencyMedId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: emergencyMedId });
-            if (commRadioId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: commRadioId });
-            if (chainsawId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: chainsawId });
-        }
-
-        // Database and Information Systems
-        const dbSystemsId = insertedResourceGroups.find(rg => rg.name === 'mock_Database and Information Systems')?.id;
-        if (dbSystemsId) {
-            const dbMgmtId = findCategory('mock_Database Management');
-            const webDevId = findCategory('mock_Web Development');
-            const networkAdminId = findCategory('mock_Network Administration');
-            if (dbMgmtId) resourceGroupCategoryData.push({ resourceGroupId: dbSystemsId, categoryId: dbMgmtId });
-            if (webDevId) resourceGroupCategoryData.push({ resourceGroupId: dbSystemsId, categoryId: webDevId });
-            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: dbSystemsId, categoryId: networkAdminId });
-        }
-
-        // Mobile Command Center
-        const commandCenterId = insertedResourceGroups.find(rg => rg.name === 'mock_Mobile Command Center')?.id;
-        if (commandCenterId) {
-            const commRadioId = findCategory('mock_Communication Radio');
-            const networkAdminId = findCategory('mock_Network Administration');
-            const firstAidId = findCategory('mock_First Aid');
-            if (commRadioId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: commRadioId });
-            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: networkAdminId });
-            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: firstAidId });
-        }
-
-        await db.insert(resourceGroupCategories).values(resourceGroupCategoryData);
-
-        console.log('✅ Database seeding completed successfully!');
-        console.log(`📊 Inserted:`);
-        console.log(`   - ${insertedCategories.length} categories`);
-        console.log(`   - ${insertedLocations.length} locations`);
-        console.log(`   - ${insertedResources.length} resources`);
-        console.log(`   - ${resourceCategoryData.length} resource-category relationships`);
-        console.log(`   - ${insertedResourceGroups.length} resource groups`);
-        console.log(`   - ${resourceGroupCategoryData.length} resource group-category relationships`);
-
-    } catch (error) {
-        console.error('❌ Error seeding database:', error);
-        throw error;
-    }
+        // Return statistics
+        return {
+            categories: insertedCategories.length,
+            locations: insertedLocations.length,
+            resources: insertedResources.length,
+            resourceCategoryRelations: resourceCategoryData.length,
+            resourceGroups: insertedResourceGroups.length,
+            resourceGroupCategoryRelations: resourceGroupCategoryData.length
+        };
+    });
 }
 
+// ========================================================================================
+// MAIN EXECUTION
+// ========================================================================================
+
 // Run the seeding function
-seedDatabase()
-    .then(() => {
+seedDatabaseRobust()
+    .then((stats) => {
+        console.log('✅ Database seeding completed successfully!');
+        console.log(`📊 Seeding Statistics:`);
+        console.log(`   - ${stats.categories} categories`);
+        console.log(`   - ${stats.locations} locations`);
+        console.log(`   - ${stats.resources} resources`);
+        console.log(`   - ${stats.resourceCategoryRelations} resource-category relationships`);
+        console.log(`   - ${stats.resourceGroups} resource groups`);
+        console.log(`   - ${stats.resourceGroupCategoryRelations} resource group-category relationships`);
         console.log('🎉 Seeding process completed!');
         return pool.end();
     })
@@ -426,6 +547,7 @@ seedDatabase()
     })
     .catch((error) => {
         console.error('💥 Seeding process failed:', error);
+        console.error('🔄 Transaction was automatically rolled back');
         pool.end().finally(() => {
             process.exit(1);
         });

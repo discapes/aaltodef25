@@ -15,6 +15,7 @@ export const resources = pgTable('resources', {
 	locationId: integer('location_id').references(() => locations.id).notNull(),
 	latitude: real('latitude').notNull(),
 	longitude: real('longitude').notNull(),
+	setupTimeHours: real('setup_time_hours').default(0).notNull(), // Time required to set up this resource before use
 	createdAt: timestamp('created_at').defaultNow(),
 	updatedAt: timestamp('updated_at').defaultNow()
 });
@@ -30,6 +31,7 @@ export const resourceGroups = pgTable("resource_groups", {
 	id: serial("id").primaryKey(),
 	name: varchar("name", { length: 255 }).notNull(),
 	description: text('description'),
+	setupTimeHours: real('setup_time_hours').default(0).notNull(), // Additional setup time after all resources are assembled
 	createdAt: timestamp('created_at').defaultNow(),
 })
 

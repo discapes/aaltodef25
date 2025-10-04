@@ -161,6 +161,12 @@
 
 			if (response.ok) {
 				locationAnalysis = await response.json();
+				// Sort by highest total number of groups (sum of all resource group counts)
+				locationAnalysis.sort((a, b) => {
+					const totalA = a.resourceGroups.reduce((sum, rg) => sum + (rg.count || 0), 0);
+					const totalB = b.resourceGroups.reduce((sum, rg) => sum + (rg.count || 0), 0);
+					return totalB - totalA; // Descending order
+				});
 				showLocationAnalysis = true;
 			} else {
 				console.error('Failed to analyze locations');
@@ -227,15 +233,22 @@
 
 	async function handleQueryWithAnalysis() {
 		try {
-			// Only run location analysis if we have items in the resource group
-			if (resourceGroup.items && resourceGroup.items.length > 0) {
+			// If we have capability text, get the AI response first
+			if (capabilityText.trim()) {
+				await handleSubmit();
+				// Only proceed with analysis if we got a valid response
+				if (response && response.items && response.items.length > 0) {
+					await analyzeLocationCapabilities();
+				}
+			} else if (resourceGroup.items.length > 0) {
+				// If we have manual resource groups but no capability text,
+				// analyze directly with the manual resource group
 				await analyzeLocationCapabilities();
-			} else {
-				console.log('No resource group items to analyze');
 			}
 		} catch (err) {
 			console.error('Error in query with analysis:', err);
 			// Make sure loading states are reset
+			loading = false;
 			analysisLoading = false;
 		}
 	}
@@ -274,8 +287,6 @@
 			return {
 				type: 'resource' as const,
 				count: item.count,
-				hours_needed: item.hours_needed,
-				hours_to_realize: item.hours_to_realize,
 				data: category || { id: 0, name: item.categoryName, description: null }
 			};
 		});
@@ -381,9 +392,12 @@
 				<Button
 					onclick={handleQueryWithAnalysis}
 					variant="outline"
-					disabled={!resourceGroup.items.length || analysisLoading}
+					type="button"
+					disabled={(!capabilityText.trim() && resourceGroup.items.length === 0) ||
+						loading ||
+						analysisLoading}
 				>
-					{analysisLoading ? 'Loading...' : 'Query'}
+					{loading || analysisLoading ? 'Loading...' : 'Query'}
 				</Button>
 			</div>
 		</div>
@@ -444,45 +458,92 @@
 							}}
 						>
 							<svelte:component this={Popup}>
-								<div class="min-w-48">
+								<div class="min-w-48 max-w-80">
 									<h3 class="font-bold">{location.location.name}</h3>
 									{#if location.resourceGroups.length > 0}
 										{#each location.resourceGroups as rg}
-											<div class="mt-2 space-y-1">
-												<div class="flex justify-between">
-													<span class="text-sm">Available now:</span>
-													<span class="font-semibold text-green-600">{rg.count}</span>
-												</div>
-												{#if rg.time_to_realize}
-													<div class="flex justify-between">
-														<span class="text-sm">Time to full capacity:</span>
-														<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
-													</div>
-												{/if}
+											<div class="mt-2 space-y-1 border-b border-gray-100 pb-2 last:border-b-0">
 												{#if rg.sources && rg.sources.length > 0}
-													<div class="mt-2 text-xs">
-														<div class="mb-1 font-medium text-gray-600">Sources:</div>
-														{#each rg.sources as source}
-															<div class="flex items-center justify-between pl-1 text-gray-600">
-																<div class="flex-1">
-																	<div class="truncate font-medium">{source.categoryName}</div>
-																	<div class="text-xs text-gray-500">
-																		{#if source.transportationTimeHours > 0}
-																			from {source.sourceLocationName}
-																		{:else}
-																			Local
-																		{/if}
-																	</div>
+													{@const localUnits = rg.sources
+														.filter((s) => s.transportationTimeHours === 0)
+														.reduce((sum, s) => sum + s.unitsTransferred, 0)}
+													{@const transferredUnits = rg.sources
+														.filter((s) => s.transportationTimeHours > 0)
+														.reduce((sum, s) => sum + s.unitsTransferred, 0)}
+													{@const maxTransportTime = Math.max(
+														...rg.sources
+															.filter((s) => s.transportationTimeHours > 0)
+															.map((s) => s.transportationTimeHours),
+														0
+													)}
+													<div class="flex justify-between">
+														<span class="text-sm">Available now:</span>
+														<span class="font-semibold text-green-600">{localUnits}</span>
+													</div>
+													{#if transferredUnits > 0}
+														<div class="flex justify-between">
+															<span class="text-sm"
+																>{localUnits + transferredUnits} in {maxTransportTime}h:</span
+															>
+															<span class="font-semibold text-blue-600">total</span>
+														</div>
+													{/if}
+													{#if rg.time_to_realize}
+														<div class="flex justify-between">
+															<span class="text-sm">Time to full capacity:</span>
+															<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
+														</div>
+													{/if}
+												{:else}
+													<div class="flex justify-between">
+														<span class="text-sm">Available now:</span>
+														<span class="font-semibold text-green-600">{rg.count}</span>
+													</div>
+													{#if rg.time_to_realize}
+														<div class="flex justify-between">
+															<span class="text-sm">Time to full capacity:</span>
+															<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
+														</div>
+													{/if}
+												{/if}
+
+												{#if rg.sources && rg.sources.length > 0}
+													<div class="mt-1">
+														<div class="mb-1 text-xs font-medium text-gray-700">Sources:</div>
+
+														<!-- Local Resources -->
+														{#each rg.sources.filter((s) => s.transportationTimeHours === 0) as source}
+															<div class="mb-1 rounded bg-green-50 px-2 py-1 text-xs text-gray-600">
+																<div class="flex items-center justify-between">
+																	<span class="font-medium text-green-700"
+																		>🏠 {source.categoryName}</span
+																	>
+																	<span class="font-semibold text-green-800"
+																		>{source.unitsTransferred} local</span
+																	>
 																</div>
-																<div class="ml-2 text-right">
-																	<div>{source.unitsTransferred}</div>
-																	{#if source.transportationTimeHours > 0}
-																		<div class="text-xs text-orange-600">
-																			{source.transportationTimeHours}h
-																		</div>
-																	{:else}
-																		<div class="text-xs text-green-600">Ready</div>
-																	{/if}
+																{#if source.remainingAtLocation !== undefined}
+																	<div class="mt-1 text-xs text-green-600">
+																		{source.remainingAtLocation} additional available at location
+																	</div>
+																{/if}
+															</div>
+														{/each}
+
+														<!-- Transferred Resources -->
+														{#each rg.sources.filter((s) => s.transportationTimeHours > 0) as source}
+															<div class="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-gray-600">
+																<div class="flex items-center justify-between">
+																	<span class="font-medium text-blue-700"
+																		>🚛 {source.categoryName}</span
+																	>
+																	<span class="font-semibold text-blue-800"
+																		>{source.unitsTransferred} units</span
+																	>
+																</div>
+																<div class="mt-1 text-xs text-blue-600">
+																	From {source.sourceLocationName} • {source.transportationTimeHours}h
+																	travel
 																</div>
 															</div>
 														{/each}
@@ -490,28 +551,22 @@
 												{/if}
 											</div>
 										{/each}
-									{:else}
-										<p class="mt-1 text-sm text-gray-500">No resource groups available</p>
-									{/if}
-
-									<!-- Resource Summary for popup -->
-									{#if location.resources && location.resources.length > 0}
-										<div class="mt-2 border-t border-gray-200 pt-2">
-											<div class="mb-1 text-xs font-medium text-gray-700">Available Resources</div>
-											{#each location.resources.slice(0, 3) as resource}
+									{:else if location.resources && location.resources.length > 0}
+										<div class="mt-2 border-t border-gray-100 pt-2">
+											<div class="mb-1 text-xs font-medium text-gray-700">
+												Individual resources:
+											</div>
+											{#each location.resources as resource}
 												{#if resource.count > 0}
-													<div class="flex justify-between text-xs">
-														<span class="truncate">{resource.categoryName}</span>
-														<span>{resource.remaining || 0}/{resource.count}</span>
+													<div class="flex justify-between text-xs text-gray-600">
+														<span>📦 {resource.categoryName}</span>
+														<span class="font-semibold">{resource.count} units</span>
 													</div>
 												{/if}
 											{/each}
-											{#if location.resources.length > 3}
-												<div class="text-xs text-gray-500">
-													...and {location.resources.length - 3} more
-												</div>
-											{/if}
 										</div>
+									{:else}
+										<p class="mt-1 text-sm text-gray-500">No resource groups available</p>
 									{/if}
 								</div>
 							</svelte:component>
@@ -557,77 +612,114 @@
 								<div class="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
 									<h4 class="font-medium text-gray-900">{location.location.name}</h4>
 									{#if location.resourceGroups.length > 0}
-										<div class="mt-2 space-y-1">
+										<div class="mt-2 space-y-2">
 											{#each location.resourceGroups as rg}
-												<div class="flex items-center justify-between text-sm">
-													<span class="text-gray-600">Available now:</span>
-													<span class="font-medium text-green-600">{rg.count} groups</span>
-												</div>
-												{#if rg.time_to_realize}
-													<div class="flex items-center justify-between text-sm">
-														<span class="text-gray-600">Full capacity:</span>
-														<span class="font-medium text-blue-600">{rg.time_to_realize}h</span>
-													</div>
-												{/if}
-												{#if rg.sources && rg.sources.length > 0}
-													<div class="mt-2 text-xs">
-														<div class="mb-1 font-medium text-gray-500">Resource Sources:</div>
-														{#each rg.sources as source}
-															<div class="flex items-center justify-between pl-2 text-gray-600">
-																<div class="flex-1">
-																	<div class="font-medium">{source.categoryName}</div>
-																	<div class="text-gray-500">
-																		{#if source.transportationTimeHours > 0}
-																			from {source.sourceLocationName}
-																		{:else}
-																			Local supply
-																		{/if}
-																	</div>
+												<div class="rounded border border-gray-100 p-2">
+													<div class="text-sm">
+														{#if rg.sources && rg.sources.length > 0}
+															{@const localUnits = rg.sources
+																.filter((s) => s.transportationTimeHours === 0)
+																.reduce((sum, s) => sum + s.unitsTransferred, 0)}
+															{@const transferredUnits = rg.sources
+																.filter((s) => s.transportationTimeHours > 0)
+																.reduce((sum, s) => sum + s.unitsTransferred, 0)}
+															{@const maxTransportTime = Math.max(
+																...rg.sources
+																	.filter((s) => s.transportationTimeHours > 0)
+																	.map((s) => s.transportationTimeHours),
+																0
+															)}
+															<div class="font-medium text-green-600">{localUnits} available</div>
+															{#if transferredUnits > 0}
+																<div class="font-medium text-blue-600">
+																	{localUnits + transferredUnits} in {maxTransportTime}h
 																</div>
-																<div class="text-right">
-																	<div>{source.unitsTransferred} units</div>
-																	{#if source.transportationTimeHours > 0}
-																		<div class="text-orange-600">
-																			{source.transportationTimeHours}h transport
+															{/if}
+															{#if rg.time_to_realize}
+																<div class="text-xs text-gray-500">
+																	Full capacity in {rg.time_to_realize} h
+																</div>
+															{/if}
+														{:else}
+															<div class="font-medium text-green-600">{rg.count} available</div>
+															{#if rg.time_to_realize}
+																<div class="font-medium text-blue-600">
+																	{rg.count} in {rg.time_to_realize} h
+																</div>
+															{/if}
+														{/if}
+													</div>
+
+													{#if rg.sources && rg.sources.length > 0}
+														<div class="mt-2 border-t border-gray-100 pt-2">
+															<div class="mb-1 text-xs font-medium text-gray-700">Sources:</div>
+
+															<!-- Local Resources -->
+															{#each rg.sources.filter((s) => s.transportationTimeHours === 0) as source}
+																<div
+																	class="mb-1 rounded bg-green-50 px-2 py-1 text-xs text-gray-600"
+																>
+																	<div class="flex items-center justify-between">
+																		<span class="font-medium text-green-700"
+																			>🏠 {source.categoryName}</span
+																		>
+																		<span class="font-semibold text-green-800"
+																			>{source.unitsTransferred} local</span
+																		>
+																	</div>
+																	{#if source.remainingAtLocation !== undefined}
+																		<div class="mt-1 text-xs text-green-600">
+																			{source.remainingAtLocation} additional available at location
 																		</div>
-																	{:else}
-																		<div class="text-green-600">Available</div>
 																	{/if}
 																</div>
-															</div>
-														{/each}
+															{/each}
+
+															<!-- Transferred Resources -->
+															{#each rg.sources.filter((s) => s.transportationTimeHours > 0) as source}
+																<div
+																	class="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-gray-600"
+																>
+																	<div class="flex items-center justify-between">
+																		<span class="font-medium text-blue-700"
+																			>🚛 {source.categoryName}</span
+																		>
+																		<span class="font-semibold text-blue-800"
+																			>{source.unitsTransferred} units</span
+																		>
+																	</div>
+																	<div class="mt-1 text-xs text-blue-600">
+																		From {source.sourceLocationName} • {source.transportationTimeHours}h
+																		travel
+																	</div>
+																</div>
+															{/each}
+														</div>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									{:else if location.resources && location.resources.length > 0}
+										<div class="mt-2 border-t border-gray-100 pt-2">
+											<div class="mb-1 text-xs font-medium text-gray-700">
+												Individual resources available:
+											</div>
+											{#each location.resources as resource}
+												{#if resource.count > 0}
+													<div class="mb-1 rounded bg-gray-50 px-2 py-1 text-xs text-gray-600">
+														<div class="flex items-center justify-between">
+															<span class="font-medium text-gray-700"
+																>📦 {resource.categoryName}</span
+															>
+															<span class="font-semibold text-gray-800">{resource.count} units</span
+															>
+														</div>
 													</div>
 												{/if}
 											{/each}
 										</div>
 									{:else}
 										<p class="mt-1 text-sm text-gray-500">No resources available</p>
-									{/if}
-
-									<!-- Resource Availability Summary -->
-									{#if location.resources && location.resources.length > 0}
-										<div class="mt-3 border-t border-gray-200 pt-2">
-											<h5 class="mb-2 text-xs font-medium text-gray-700">Resource Availability</h5>
-											<div class="space-y-1">
-												{#each location.resources as resource}
-													{#if resource.count > 0}
-														<div class="flex items-center justify-between text-xs">
-															<span class="truncate text-gray-600">{resource.categoryName}</span>
-															<div class="text-right">
-																<div class="font-medium">
-																	{resource.remaining || 0} / {resource.count} available
-																</div>
-																{#if resource.transferred && resource.transferred > 0}
-																	<div class="text-orange-600">
-																		{resource.transferred} transferred out
-																	</div>
-																{/if}
-															</div>
-														</div>
-													{/if}
-												{/each}
-											</div>
-										</div>
 									{/if}
 								</div>
 							{/each}

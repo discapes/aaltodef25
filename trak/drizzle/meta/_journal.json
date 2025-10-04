@@ -22,6 +22,13 @@
       "when": 1759589878240,
       "tag": "0002_spotty_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1759596831960,
+      "tag": "0003_fast_blacklash",
+      "breakpoints": true
     }
   ]
 }

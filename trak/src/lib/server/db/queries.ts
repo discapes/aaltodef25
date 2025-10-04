@@ -18,13 +18,12 @@ export async function getLocationsWithResourceCounts(categoryIds: number[] = [])
             })
             .from(locations)
             .leftJoin(resources, eq(locations.id, resources.locationId))
-            .groupBy(locations.id, resources.latitude, resources.longitude)
-            .limit(1);
+            .orderBy(locations.id, resources.id); // Order to get consistent "first" resource per location
 
-        // Create a map of location coordinates
+        // Create a map of location coordinates (using first resource per location)
         const coordsMap = new Map();
         for (const coord of locationCoords) {
-            if (!coordsMap.has(coord.locationId)) {
+            if (!coordsMap.has(coord.locationId) && coord.latitude !== null && coord.longitude !== null) {
                 coordsMap.set(coord.locationId, {
                     latitude: coord.latitude,
                     longitude: coord.longitude,
@@ -125,7 +124,8 @@ export async function getLocationsWithResourceGroupCounts(resourceGroups: Resour
                             unitsTransferred: unitsUsedByThisGroup,
                             transportationTimeHours: 0, // Local resources, no transportation time
                             distanceKm: 0, // Local resources, no distance
-                            count: groupCount // Number of groups this local source supports
+                            count: groupCount, // Number of groups this local source supports
+                            remainingAtLocation: localResource.count - unitsUsedByThisGroup // Remaining units at this location
                         });
                     }
                 }
@@ -585,7 +585,7 @@ export async function getLocationsWithOptimalResourceGroupPlacement(resourceGrou
             const targetLocation = locations.find(loc => loc.location.id === bestPlacement.targetLocationId);
             if (targetLocation) {
                 // Find or create the resource group entry for this location
-                let resourceGroupEntry = targetLocation.resourceGroups.find(rg => rg.group.id === groupOptimization.group.id);
+                let resourceGroupEntry = targetLocation.resourceGroups.find((rg: any) => rg.group.id === groupOptimization.group.id);
 
                 if (resourceGroupEntry) {
                     // Update existing entry - calculate total realization time
@@ -596,38 +596,53 @@ export async function getLocationsWithOptimalResourceGroupPlacement(resourceGrou
                     );
                     resourceGroupEntry.time_to_realize = totalRealizationTime;
 
-                    // Add sources information for additional groups
+                    // Add sources information for additional groups (optimized - aggregate duplicates)
                     if (!resourceGroupEntry.sources) {
                         resourceGroupEntry.sources = [];
                     }
 
-                    // Add local resource sources
+                    // Aggregate local resource sources
+                    const localSourceMap = new Map<number, any>();
                     for (const localSource of (bestPlacement as any).localResourceSources || []) {
-                        resourceGroupEntry.sources.push({
-                            categoryId: localSource.categoryId,
-                            categoryName: localSource.categoryName,
-                            sourceLocationId: bestPlacement.targetLocationId,
-                            sourceLocationName: bestPlacement.targetLocationName,
-                            unitsTransferred: localSource.quantity,
-                            transportationTimeHours: 0, // Local resources have no transport time
-                            distanceKm: 0,
-                            count: bestPlacement.additionalGroupsAtLocation
-                        });
+                        const existing = localSourceMap.get(localSource.categoryId);
+                        if (existing) {
+                            existing.unitsTransferred += localSource.quantity;
+                        } else {
+                            localSourceMap.set(localSource.categoryId, {
+                                categoryId: localSource.categoryId,
+                                categoryName: localSource.categoryName,
+                                sourceLocationId: bestPlacement.targetLocationId,
+                                sourceLocationName: bestPlacement.targetLocationName,
+                                unitsTransferred: localSource.quantity,
+                                transportationTimeHours: 0,
+                                distanceKm: 0,
+                                count: bestPlacement.additionalGroupsAtLocation
+                            });
+                        }
                     }
+                    resourceGroupEntry.sources.push(...localSourceMap.values());
 
-                    // Add transfer sources
+                    // Aggregate transfer sources
+                    const transferSourceMap = new Map<string, any>();
                     for (const transfer of bestPlacement.resourceTransfers) {
-                        resourceGroupEntry.sources.push({
-                            categoryId: transfer.categoryId,
-                            categoryName: transfer.categoryName,
-                            sourceLocationId: transfer.fromLocationId,
-                            sourceLocationName: transfer.fromLocationName,
-                            unitsTransferred: transfer.quantity,
-                            transportationTimeHours: transfer.travelTimeHours,
-                            distanceKm: transfer.distanceKm,
-                            count: bestPlacement.additionalGroupsAtLocation // Number of additional groups
-                        });
+                        const key = `${transfer.categoryId}-${transfer.fromLocationId}`;
+                        const existing = transferSourceMap.get(key);
+                        if (existing) {
+                            existing.unitsTransferred += transfer.quantity;
+                        } else {
+                            transferSourceMap.set(key, {
+                                categoryId: transfer.categoryId,
+                                categoryName: transfer.categoryName,
+                                sourceLocationId: transfer.fromLocationId,
+                                sourceLocationName: transfer.fromLocationName,
+                                unitsTransferred: transfer.quantity,
+                                transportationTimeHours: transfer.travelTimeHours,
+                                distanceKm: transfer.distanceKm,
+                                count: bestPlacement.additionalGroupsAtLocation
+                            });
+                        }
                     }
+                    resourceGroupEntry.sources.push(...transferSourceMap.values());
                 } else {
                     // Create new entry - calculate total realization time and sources
                     const totalRealizationTime = calculateTotalRealizationTime(
@@ -635,20 +650,25 @@ export async function getLocationsWithOptimalResourceGroupPlacement(resourceGrou
                         bestPlacement.maxTravelTimeHours
                     );
 
-                    const sources = [
-                        // Add local resource sources
-                        ...((bestPlacement as any).localResourceSources || []).map((localSource: any) => ({
+                    // Aggregate sources to avoid duplicates
+                    const localSourceMap = new Map<number, any>();
+                    for (const localSource of (bestPlacement as any).localResourceSources || []) {
+                        localSourceMap.set(localSource.categoryId, {
                             categoryId: localSource.categoryId,
                             categoryName: localSource.categoryName,
                             sourceLocationId: bestPlacement.targetLocationId,
                             sourceLocationName: bestPlacement.targetLocationName,
                             unitsTransferred: localSource.quantity,
-                            transportationTimeHours: 0, // Local resources have no transport time
+                            transportationTimeHours: 0,
                             distanceKm: 0,
                             count: bestPlacement.additionalGroupsAtLocation
-                        })),
-                        // Add transfer sources
-                        ...bestPlacement.resourceTransfers.map(transfer => ({
+                        });
+                    }
+
+                    const transferSourceMap = new Map<string, any>();
+                    for (const transfer of bestPlacement.resourceTransfers) {
+                        const key = `${transfer.categoryId}-${transfer.fromLocationId}`;
+                        transferSourceMap.set(key, {
                             categoryId: transfer.categoryId,
                             categoryName: transfer.categoryName,
                             sourceLocationId: transfer.fromLocationId,
@@ -657,8 +677,10 @@ export async function getLocationsWithOptimalResourceGroupPlacement(resourceGrou
                             transportationTimeHours: transfer.travelTimeHours,
                             distanceKm: transfer.distanceKm,
                             count: bestPlacement.additionalGroupsAtLocation
-                        }))
-                    ];
+                        });
+                    }
+
+                    const sources = [...localSourceMap.values(), ...transferSourceMap.values()];
 
                     targetLocation.resourceGroups.push({
                         group: groupOptimization.group,
@@ -721,7 +743,127 @@ export async function getLocationsWithOptimalResourceGroupPlacement(resourceGrou
             const transferred = transfersFromLocation[resource.categoryId] || 0;
             const totalUsed = localUsage + transferred;
 
-            resource.used = totalUsed;
+            resource.used = localUsage;
+            resource.transferred = transferred;
+            resource.remaining = Math.max(0, resource.count - totalUsed);
+        }
+    }
+
+    return locations;
+}
+
+// Helper function to aggregate duplicate sources
+function aggregateSources(sources: any[]): any[] {
+    const aggregated = new Map<string, any>();
+
+    for (const source of sources) {
+        const key = `${source.categoryId}-${source.sourceLocationId}`;
+        if (aggregated.has(key)) {
+            const existing = aggregated.get(key)!;
+            existing.unitsTransferred += source.unitsTransferred;
+            existing.count = Math.max(existing.count, source.count);
+        } else {
+            aggregated.set(key, { ...source });
+        }
+    }
+
+    return Array.from(aggregated.values());
+}
+
+// Helper function to create sources for a placement
+function createSourcesForPlacement(placement: any): any[] {
+    const sources = [];
+
+    // Add local resource sources (aggregated)
+    const localSources = new Map<number, any>();
+    for (const localSource of (placement as any).localResourceSources || []) {
+        if (localSources.has(localSource.categoryId)) {
+            localSources.get(localSource.categoryId)!.unitsTransferred += localSource.quantity;
+        } else {
+            localSources.set(localSource.categoryId, {
+                categoryId: localSource.categoryId,
+                categoryName: localSource.categoryName,
+                sourceLocationId: placement.targetLocationId,
+                sourceLocationName: placement.targetLocationName,
+                unitsTransferred: localSource.quantity,
+                transportationTimeHours: 0,
+                distanceKm: 0,
+                count: placement.additionalGroupsAtLocation
+            });
+        }
+    }
+    sources.push(...localSources.values());
+
+    // Add transfer sources (aggregated)
+    const transferSources = new Map<string, any>();
+    for (const transfer of placement.resourceTransfers) {
+        const key = `${transfer.categoryId}-${transfer.fromLocationId}`;
+        if (transferSources.has(key)) {
+            transferSources.get(key)!.unitsTransferred += transfer.quantity;
+        } else {
+            transferSources.set(key, {
+                categoryId: transfer.categoryId,
+                categoryName: transfer.categoryName,
+                sourceLocationId: transfer.fromLocationId,
+                sourceLocationName: transfer.fromLocationName,
+                unitsTransferred: transfer.quantity,
+                transportationTimeHours: transfer.travelTimeHours,
+                distanceKm: transfer.distanceKm,
+                count: placement.additionalGroupsAtLocation
+            });
+        }
+    }
+    sources.push(...transferSources.values());
+
+    return sources;
+}
+
+// Optimized resource usage calculation
+function calculateResourceUsageOptimized(locations: any[]) {
+    // Build transfer maps for efficient lookup
+    const transfersFromLocation: Record<number, Record<number, number>> = {};
+
+    for (const location of locations) {
+        transfersFromLocation[location.location.id] = {};
+
+        for (const otherLocation of locations) {
+            if (otherLocation.location.id === location.location.id) continue;
+
+            for (const resourceGroup of otherLocation.resourceGroups) {
+                if (resourceGroup.sources) {
+                    for (const source of resourceGroup.sources) {
+                        if (source.sourceLocationId === location.location.id) {
+                            const categoryId = source.categoryId;
+                            transfersFromLocation[location.location.id][categoryId] =
+                                (transfersFromLocation[location.location.id][categoryId] || 0) + source.unitsTransferred;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Calculate usage and remaining for each location
+    for (const location of locations) {
+        for (const resource of location.resources) {
+            let localUsage = 0;
+
+            // Calculate local usage
+            for (const resourceGroup of location.resourceGroups) {
+                if (resourceGroup.sources) {
+                    for (const source of resourceGroup.sources) {
+                        if (source.sourceLocationId === location.location.id &&
+                            source.categoryId === resource.categoryId) {
+                            localUsage += source.unitsTransferred;
+                        }
+                    }
+                }
+            }
+
+            const transferred = transfersFromLocation[location.location.id][resource.categoryId] || 0;
+            const totalUsed = localUsage + transferred;
+
+            resource.used = localUsage;
             resource.transferred = transferred;
             resource.remaining = Math.max(0, resource.count - totalUsed);
         }

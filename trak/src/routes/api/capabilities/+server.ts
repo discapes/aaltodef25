@@ -22,14 +22,13 @@ export const POST: RequestHandler = async ({ request }) => {
         'X-Title': 'Trak',
         'Content-Type': 'application/json'
       },
+      // Consider the DOTMLPF doctrine(Doctrine, Organization, Training, Materiel, Leadership, Personnel, Facilities) when determining resource requirements.
       body: JSON.stringify({
         model: "openai/gpt-oss-20b:free",
         messages: [
           {
             role: "system", content: `You are a system that creates resource groups based on military capabilities requested by the user. 
             Given a capability description, you should create a resource group containing the specific resources (by category name) and quantities needed to fulfill that capability.
-            
-            Consider the DOTMLPF doctrine (Doctrine, Organization, Training, Materiel, Leadership, Personnel, Facilities) when determining resource requirements.
             
             Available categories: ${categories.join(", ")}.
             Available resource groups: ${resource_groups.join(", ")}.
@@ -43,6 +42,11 @@ export const POST: RequestHandler = async ({ request }) => {
               * categoryName: exact name from the available categories
               * hours_needed: estimated hours of operation/usage (optional, for ongoing activities)
               * hours_to_realize: estimated hours to deploy/setup (optional, for initial setup time)
+            
+            Only list the resources actually needed for to build the item, form the team or complete the action depending on the type of request.
+            Nothing else. The fewer the better.
+          
+            Some categories are people or skills people have. Do not use them if you are not explicitly asked to form a team or similar.
             
             Only use categories from the available list. Choose realistic quantities and time estimates based on military operational requirements.
             For timing estimates: hours_to_realize should reflect deployment/setup time (e.g., 2-24 hours), 
