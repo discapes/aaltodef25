@@ -5,12 +5,15 @@ import { z } from 'zod';
 export const category = z.object({
     id: z.number(),
     name: z.string(),
+    description: z.string().nullable(),
 });
 
 // Base resource schema
 export const location = z.object({
     id: z.number(),
     name: z.string(),
+    latitude: z.number().nullable(),
+    longitude: z.number().nullable(),
 });
 
 // Resource group schema with recursive structure
@@ -37,6 +40,16 @@ export const resourceGroup = z.object({
     ]))
 });
 
+export const capabilityResourceGroup = z.object({
+    name: z.string(),
+    description: z.string().optional(),
+    items: z.array(z.object({
+        type: z.literal('resource'),
+        count: z.number().int().min(0),
+        categoryName: z.string(), // Category name instead of full category object
+    }))
+});
+
 export const capability = z.object({
     category_names: z.array(z.string()),
     resource_group_names: z.array(z.string()),
@@ -50,7 +63,12 @@ export const CapabilitiesRequestSchema = z.object({
 
 export const CapabilitiesResponseSchema = z.object({
     success: z.boolean(),
-    response: capability,
+    response: capabilityResourceGroup,
+    usage: z.object({
+        prompt_tokens: z.number(),
+        completion_tokens: z.number(),
+        total_tokens: z.number()
+    }).optional()
 });
 
 export const CapabilitiesErrorSchema = z.object({

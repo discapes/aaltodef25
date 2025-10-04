@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { CapabilitiesRequestSchema, capability } from '$lib/server/db/types';
+import { CapabilitiesRequestSchema, capabilityResourceGroup } from '$lib/server/db/types';
 import { getAllCategoriesAndResourceGroupNames } from '$lib/server/db';
 import z from 'zod';
 
@@ -40,12 +40,12 @@ export const POST: RequestHandler = async ({ request }) => {
           },
           { role: "user", content: message }
         ],
-        max_tokens: 1000,
-        temperature: 0.7,
+        max_tokens: 2000,
+        temperature: 0.3,
         response_format: {
           type: "json_schema",
           json_schema: {
-            name: "capability_analysis",
+            name: "capability_resource_group",
             strict: true,
             schema: z.toJSONSchema(capability)
           }
@@ -58,11 +58,11 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     const resBody = await response.json();
-    if(!resBody.choices) {
-      console.log("No categories returned", resBody)
+    if (!resBody.choices || !resBody.choices[0] || !resBody.choices[0].message) {
+      console.log("No resource group returned", resBody)
       return json({
         success: false,
-        respone: {categories: []},
+        response: { name: "", description: "", items: [] },
         usage: resBody.usage
       })
     }

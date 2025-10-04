@@ -13,11 +13,12 @@ if (!DATABASE_URL) {
     throw new Error('DATABASE_URL environment variable is not set');
 }
 
+// Create database connection using the same pattern as db/index.ts
 const pool = new pg.Pool({
-	connectionString: env.DATABASE_URL
+    connectionString: DATABASE_URL
 });
 
-export const db = drizzle(pool, { schema });
+const db = drizzle(pool, { schema });
 
 async function seedDatabase() {
     console.log('🌱 Starting database seeding...');
@@ -80,7 +81,7 @@ async function seedDatabase() {
             { name: 'mock_Medical Supplies', description: 'Basic medical equipment and supplies' },
             { name: 'mock_Food Rations', description: 'Emergency food supplies for one person/day' },
             { name: 'mock_Communication Radio', description: 'Two-way radio communication device' },
-            
+
             { name: 'mock_Water Supply', description: 'Fresh water supply' },
 
         ]).returning();
@@ -419,9 +420,14 @@ async function seedDatabase() {
 seedDatabase()
     .then(() => {
         console.log('🎉 Seeding process completed!');
+        return pool.end();
+    })
+    .then(() => {
         process.exit(0);
     })
     .catch((error) => {
         console.error('💥 Seeding process failed:', error);
-        process.exit(1);
+        pool.end().finally(() => {
+            process.exit(1);
+        });
     });

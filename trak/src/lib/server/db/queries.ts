@@ -9,6 +9,29 @@ export async function getLocationsWithResourceCounts(categoryIds: number[] = [])
         // Build where condition for category filtering
         const whereCondition = categoryIds.length > 0 ? inArray(categories.id, categoryIds) : undefined;
 
+        // First, get location coordinates (using first resource's coordinates as representative)
+        const locationCoords = await db
+            .select({
+                locationId: locations.id,
+                latitude: resources.latitude,
+                longitude: resources.longitude
+            })
+            .from(locations)
+            .leftJoin(resources, eq(locations.id, resources.locationId))
+            .groupBy(locations.id, resources.latitude, resources.longitude)
+            .limit(1);
+
+        // Create a map of location coordinates
+        const coordsMap = new Map();
+        for (const coord of locationCoords) {
+            if (!coordsMap.has(coord.locationId)) {
+                coordsMap.set(coord.locationId, {
+                    latitude: coord.latitude,
+                    longitude: coord.longitude,
+                });
+            }
+        }
+
         // Execute query with optional category filtering
         const locationCounts = await db
             .select({
@@ -30,10 +53,13 @@ export async function getLocationsWithResourceCounts(categoryIds: number[] = [])
 
         for (const row of locationCounts) {
             if (!locationMap[row.locationId]) {
+                const coords = coordsMap.get(row.locationId) || { latitude: null, longitude: null };
                 locationMap[row.locationId] = {
                     location: {
                         id: row.locationId,
-                        name: row.cityName
+                        name: row.cityName,
+                        latitude: coords.latitude,
+                        longitude: coords.longitude
                     },
                     resources: [],
                     resourceGroups: []

@@ -7,6 +7,8 @@
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import ResourceGroupForm from './ResourceGroupForm.svelte';
 	import type { CreateResourceGroup } from '$lib/server/db/types';
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
 	export let data: PageData;
 
@@ -15,6 +17,23 @@
 		description: '',
 		items: []
 	};
+
+	// Check for generated resource group data from capabilities page
+	onMount(() => {
+		if (browser) {
+			const storedData = sessionStorage.getItem('generatedResourceGroup');
+			if (storedData) {
+				try {
+					const parsedData = JSON.parse(storedData);
+					resourceGroup = parsedData;
+					// Clear the stored data after using it
+					sessionStorage.removeItem('generatedResourceGroup');
+				} catch (e) {
+					console.error('Failed to parse stored resource group data:', e);
+				}
+			}
+		}
+	});
 
 	async function handleSubmit() {
 		try {
@@ -44,7 +63,7 @@
 	}
 </script>
 
-<div class="container mx-auto p-6 max-w-4xl">
+<div class="container mx-auto max-w-4xl p-6">
 	<Card>
 		<CardHeader>
 			<CardTitle>Create New Resource Group</CardTitle>
@@ -76,11 +95,7 @@
 				existingResourceGroups={data.existingResourceGroups}
 			/>
 
-			<Button 
-				onclick={handleSubmit} 
-				class="w-full" 
-				disabled={!resourceGroup.name.trim()}
-			>
+			<Button onclick={handleSubmit} class="w-full" disabled={!resourceGroup.name.trim()}>
 				Create Resource Group
 			</Button>
 		</CardContent>

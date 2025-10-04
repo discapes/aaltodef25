@@ -81,7 +81,7 @@
 			let requestBody;
 			try {
 				requestBody = JSON.parse(jsonInput);
-			} catch (parseError) {
+			} catch (parseError: any) {
 				throw new Error(`Invalid JSON: ${parseError.message}`);
 			}
 
@@ -99,7 +99,7 @@
 			// Display response
 			responseClass = apiResponse.ok ? 'response success' : 'response error';
 			response = `Status: ${apiResponse.status} ${apiResponse.statusText}\n\n${JSON.stringify(data, null, 2)}`;
-		} catch (error) {
+		} catch (error: any) {
 			responseClass = 'response error';
 			response = `Error: ${error.message}`;
 		} finally {
@@ -111,7 +111,7 @@
 		try {
 			const parsed = JSON.parse(jsonInput);
 			jsonInput = JSON.stringify(parsed, null, 2);
-		} catch (error) {
+		} catch (error: any) {
 			// Only use alert in the browser
 			if (browser) {
 				alert('Invalid JSON: ' + error.message);
@@ -162,7 +162,10 @@
 
 <style>
 	:global(body) {
-		font-family: system-ui, -apple-system, sans-serif;
+		font-family:
+			system-ui,
+			-apple-system,
+			sans-serif;
 		background-color: #f5f5f5;
 		margin: 0;
 		padding: 20px;
