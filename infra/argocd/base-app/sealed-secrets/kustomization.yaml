@@ -1,0 +1,3 @@
+# will and must be created in kube-system namespace
+resources:
+  - https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.30.0/controller.yaml

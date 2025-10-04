@@ -1,0 +1,5 @@
+# must be created in argocd namespace
+namespace: argocd
+resources:
+  - namespace.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.0.6/manifests/ha/install.yaml

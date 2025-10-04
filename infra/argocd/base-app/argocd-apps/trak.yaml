@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trak-app
+spec:
+  project: default
+  source:
+    path: infra/argocd/trak-app
+    repoURL: https://github.com/discapes/aaltodef25
+    targetRevision: HEAD
+  destination:
+    namespace: default
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

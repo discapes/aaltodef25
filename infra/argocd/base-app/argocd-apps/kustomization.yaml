@@ -1,0 +1,7 @@
+namespace: argocd
+resources:
+  - trak.yaml
+  - trak-github-token.yaml
+  - base.yaml
+  # these live in the same repo
+  # - base-github-token.yaml

@@ -1,0 +1,4 @@
+resources:
+  - argocd
+  - sealed-secrets
+  - argocd-apps
