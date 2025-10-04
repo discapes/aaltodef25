@@ -44,6 +44,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "trak.fullname" . }}-db-app
                   key: uri
+            - name: OPENROUTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: trak-env
+                  key: openrouter_key
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
