@@ -11,8 +11,21 @@ export async function getAllCategories() {
 
 export async function getAllResources() {
     return db
-        .select()
+        .select({
+            id: resources.id,
+            name: resources.name,
+            description: resources.description,
+            locationId: resources.locationId,
+            latitude: resources.latitude,
+            longitude: resources.longitude,
+            createdAt: resources.createdAt,
+            updatedAt: resources.updatedAt,
+            categoryId: resourceCategories.categoryId,
+            categoryName: categories.name
+        })
         .from(resources)
+        .leftJoin(resourceCategories, eq(resources.id, resourceCategories.resourceId))
+        .leftJoin(categories, eq(resourceCategories.categoryId, categories.id))
         .execute();
 }
 
@@ -31,10 +44,13 @@ export async function getResourcesByCategories(categoryIds: number[] = []) {
             latitude: resources.latitude,
             longitude: resources.longitude,
             createdAt: resources.createdAt,
-            updatedAt: resources.updatedAt
+            updatedAt: resources.updatedAt,
+            categoryId: resourceCategories.categoryId,
+            categoryName: categories.name
         })
         .from(resources)
         .innerJoin(resourceCategories, eq(resources.id, resourceCategories.resourceId))
+        .innerJoin(categories, eq(resourceCategories.categoryId, categories.id))
         .where(inArray(resourceCategories.categoryId, categoryIds))
         .execute();
 }
