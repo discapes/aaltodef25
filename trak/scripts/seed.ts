@@ -64,6 +64,9 @@ async function seedDatabase() {
             { name: 'mock_Medical Supplies', description: 'Basic medical equipment and supplies' },
             { name: 'mock_Food Rations', description: 'Emergency food supplies for one person/day' },
             { name: 'mock_Communication Radio', description: 'Two-way radio communication device' },
+            
+            { name: 'mock_Water Supply', description: 'Fresh water supply' },
+
         ]).returning();
 
         // Insert locations
@@ -89,6 +92,7 @@ async function seedDatabase() {
             { name: 'mock_Emergency Toolkit A', description: 'Complete emergency response toolkit', locationId: insertedLocations[0].id, latitude: 60.1612, longitude: 24.9521 },
             { name: 'mock_Medical Station 1', description: 'Mobile medical equipment station', locationId: insertedLocations[0].id, latitude: 60.1695, longitude: 24.9354 },
             { name: 'mock_Dr. Sarah Johnson', description: 'Emergency medicine physician', locationId: insertedLocations[0].id, latitude: 60.1733, longitude: 24.9417 },
+            { name: 'mock_Freshwater well', description: 'Fresh water well', locationId: insertedLocations[0].id, latitude: 60.1833, longitude: 24.9517 },
 
             // Tampere resources
             { name: 'mock_Mikko Korhonen', description: 'Network administrator and IT specialist', locationId: insertedLocations[1].id, latitude: 61.4991, longitude: 23.7871 },
@@ -227,6 +231,10 @@ async function seedDatabase() {
             }
             if (resource.name.toLowerCase().includes('communication')) {
                 const categoryId = findCategory('mock_Communication Radio');
+                if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
+            }
+            if (resource.name.toLowerCase().includes('water')) {
+                const categoryId = findCategory('mock_Water Supply');
                 if (categoryId) resourceCategoryData.push({ resourceId: resource.id, categoryId });
             }
         }

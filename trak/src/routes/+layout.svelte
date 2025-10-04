@@ -23,6 +23,9 @@
 						<a href="/map">Map</a>
 					</Button>
 					<Button variant="ghost" size="sm">
+						<a href="/capabilities">Capabilities</a>
+					</Button>
+					<Button variant="ghost" size="sm">
 						<a href="/resource-groups/new">New Resource Group</a>
 					</Button>
 				</div>
