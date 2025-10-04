@@ -12,6 +12,7 @@ spec:
     helm:
       releaseName: trak
       valuesObject:
+        replicaCount: 3
         imagePullSecrets:
           - name: pull-secret
         ingress:
