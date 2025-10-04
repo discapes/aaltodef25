@@ -21,6 +21,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id # type: ignore
     text = update.message.text
 
+    logger.info(f"Message: '{text}'")
+
     # If the model produced structured JSON for submission, catch it
     try:
         r = requests.post(f"{API_BASE_URL}/api/telegram", json={"message": text, "user_id": user_id}, timeout=20)
