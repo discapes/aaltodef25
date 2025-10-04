@@ -1,13 +1,46 @@
 <script lang="ts">
 	import Button from "$lib/components/ui/button/button.svelte";
+	import * as Card from "$lib/components/ui/card/index.js";
+	import type { CapabilitiesRequest, CapabilitiesResponse, CapabilitiesError } from '$lib/server/db/types';
 
 	let capabilityText = '';
+	let response: { categories: string[] } | null = null;
+	let loading = false;
+	let error = '';
 
-	function handleSubmit() {
-		console.log('Submitted capability:', capabilityText);
-		// TODO: Add actual form submission logic
-		alert(`Capability submitted: ${capabilityText}`);
-		capabilityText = ''; // Clear the form after submission
+	async function handleSubmit() {
+		loading = true;
+		error = '';
+		response = null;
+		
+		try {
+			const requestData: CapabilitiesRequest = {
+				message: capabilityText,
+			};
+
+			const res = await fetch('/api/capabilities', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(requestData)
+			});
+
+			const data = await res.json();
+
+			if (res.ok) {
+				const result = data as CapabilitiesResponse;
+				response = result.response;
+			} else {
+				const errorResult = data as CapabilitiesError;
+				error = errorResult.error;
+			}
+		} catch (err) {
+			error = 'Network error occurred';
+			console.error('Error:', err);
+		} finally {
+			loading = false;
+		}
 	}
 </script>
 
@@ -23,7 +56,7 @@
 				<textarea
 					id="capability"
 					bind:value={capabilityText}
-					placeholder=""
+					placeholder="Ask about AI capabilities..."
 					rows="4"
 					class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-vertical"
 					required
@@ -33,11 +66,42 @@
 			<div class="flex justify-end">
 				<Button
 					type="submit"
-					disabled={!capabilityText.trim()}
+					disabled={!capabilityText.trim() || loading}
 				>
-					Submit Capability
+					{loading ? 'Loading...' : 'Ask AI'}
 				</Button>
 			</div>
 		</form>
+		
+		{#if error}
+			<div class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-md">
+				Error: {error}
+			</div>
+		{/if}
+		
+		{#if response}
+			<div class="mt-6 space-y-4">
+				<h2 class="text-lg font-semibold text-gray-900">Required Categories:</h2>
+				
+				{#if response.categories && response.categories.length > 0}
+					<div class="grid gap-3">
+						{#each response.categories as category}
+							<Card.Root class="p-4">
+								<Card.Content class="flex items-center p-0">
+									<div class="w-3 h-3 bg-blue-500 rounded-full mr-3 flex-shrink-0"></div>
+									<span class="text-gray-800 font-medium">{category}</span>
+								</Card.Content>
+							</Card.Root>
+						{/each}
+					</div>
+				{:else}
+					<Card.Root class="p-4">
+						<Card.Content class="text-center text-gray-500 p-0">
+							No specific categories identified for this capability.
+						</Card.Content>
+					</Card.Root>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>

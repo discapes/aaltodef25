@@ -35,6 +35,39 @@ export const resourceGroup = z.object({
     ]))
 });
 
+export const capability = z.object({
+    categories: z.array(z.union(
+        [
+            z.string(),
+        ]
+    ))
+});
+
+
+// Capabilities API schemas
+export const CapabilitiesRequestSchema = z.object({
+  message: z.string(),
+});
+
+export const CapabilitiesResponseSchema = z.object({
+  success: z.boolean(),
+  response: capability,
+  usage: z.object({
+    prompt_tokens: z.number(),
+    completion_tokens: z.number(),
+    total_tokens: z.number()
+  }).optional()
+});
+
+export const CapabilitiesErrorSchema = z.object({
+  error: z.string()
+});
+
+export type CapabilitiesRequest = z.infer<typeof CapabilitiesRequestSchema>;
+export type CapabilitiesResponse = z.infer<typeof CapabilitiesResponseSchema>;
+export type CapabilitiesError = z.infer<typeof CapabilitiesErrorSchema>;
+
+
 // Base resource schema
 export const locationWithResourceCounts = z.object({
     location: location,
