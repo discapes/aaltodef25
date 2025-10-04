@@ -25,7 +25,8 @@
 		updatedAt: Date | null;
 	}
 
-	let resources: Resource[] = [];
+	let allResources: Resource[] = [];
+	let filteredResources: Resource[] = [];
 	let categories: Category[] = [];
 	let selectedCategoryIds: number[] = [];
 
@@ -62,19 +63,25 @@
 
 	async function loadResources() {
 		try {
-			let url = '/api/resources';
-			if (selectedCategoryIds.length > 0) {
-				url += `?categories=${selectedCategoryIds.join(',')}`;
-			}
-
-			const response = await fetch(url);
+			const response = await fetch('/api/resources');
 			if (response.ok) {
-				resources = await response.json();
+				allResources = await response.json();
+				filterResources();
 			} else {
 				console.error('Failed to load resources');
 			}
 		} catch (error) {
 			console.error('Error loading resources:', error);
+		}
+	}
+
+	function filterResources() {
+		if (selectedCategoryIds.length === 0) {
+			filteredResources = allResources;
+		} else {
+			filteredResources = allResources.filter(resource => 
+				resource.categoryId && selectedCategoryIds.includes(resource.categoryId)
+			);
 		}
 	}
 
@@ -97,17 +104,17 @@
 		} else {
 			selectedCategoryIds = [...selectedCategoryIds, categoryId];
 		}
-		loadResources();
+		filterResources();
 	}
 
 	function selectAllCategories() {
 		selectedCategoryIds = categories.map((cat) => cat.id);
-		loadResources();
+		filterResources();
 	}
 
 	function clearAllCategories() {
 		selectedCategoryIds = [];
-		loadResources();
+		filterResources();
 	}
 
 	function toggleAllCategories() {
@@ -167,7 +174,7 @@
 		</div>
 
 		<div class="border-t border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-600">
-			{resources.length} resource{resources.length !== 1 ? 's' : ''} shown
+			{filteredResources.length} resource{filteredResources.length !== 1 ? 's' : ''} shown
 		</div>
 	</div>
 
@@ -180,7 +187,7 @@
 			}}
 		>
 			<TileLayer url={'https://tile.openstreetmap.org/{z}/{x}/{y}.png'} />
-			{#each resources as resource}
+			{#each filteredResources as resource (resource.id.toString() + resource.categoryId)}
 				<Marker
 					latLng={[resource.latitude, resource.longitude]}
 					options={{

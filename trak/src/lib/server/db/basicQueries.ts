@@ -38,7 +38,7 @@ export async function getAllResourcesLimited() {
         .leftJoin(resourceCategories, eq(resources.id, resourceCategories.resourceId))
         .leftJoin(categories, eq(resourceCategories.categoryId, categories.id))
         .orderBy(sql<string>`RANDOM()`)
-        .limit(12)
+        .limit(1207)
         .execute();
 }
 
