@@ -1,0 +1,43 @@
+name: Release
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read # for checkout
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+      - name: Release container image and Helm chart
+        env:
+          REGISTRY_USERNAME: ${{ secrets.GITEA_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.GITEA_PASSWORD }}
+        run: |
+            set -euo pipefail
+            VERSION="$(git describe --tags --exact-match | tail -c +2)"
+            REPO=gitea.miikat.dev/ci/trak
+            IMAGE="$REPO:$VERSION"
+            HELM_REPO="oci://$REPO-helm"
+            podman login -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" gitea.miikat.dev
+            podman build -t "$IMAGE" -f infra/Dockerfile .
+            podman push "$IMAGE"
+            helm dependency update infra/helm/trak
+            helm package infra/helm/trak --version "$VERSION" --app-version "$VERSION"
+            helm push "trak-$VERSION.tgz" "$HELM_REPO"
+            
