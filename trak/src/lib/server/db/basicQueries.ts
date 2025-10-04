@@ -20,6 +20,28 @@ export async function getAllCategoriesAndResourceGroupNames() {
 }
 
 
+export async function getAllResourcesLimited() {
+    return db
+        .select({
+            id: resources.id,
+            name: resources.name,
+            description: resources.description,
+            locationId: resources.locationId,
+            latitude: resources.latitude,
+            longitude: resources.longitude,
+            createdAt: resources.createdAt,
+            updatedAt: resources.updatedAt,
+            categoryId: resourceCategories.categoryId,
+            categoryName: categories.name
+        })
+        .from(resources)
+        .leftJoin(resourceCategories, eq(resources.id, resourceCategories.resourceId))
+        .leftJoin(categories, eq(resourceCategories.categoryId, categories.id))
+        .orderBy(sql<string>`RANDOM()`)
+        .limit(12)
+        .execute();
+}
+
 export async function getAllResources() {
     return db
         .select({

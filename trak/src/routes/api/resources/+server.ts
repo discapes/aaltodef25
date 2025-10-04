@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { getAllResources, getResourcesByCategories } from '$lib/server/db/basicQueries';
+import { getAllResourcesLimited, getResourcesByCategories } from '$lib/server/db/basicQueries';
 
 export const GET: RequestHandler = async ({ url }) => {
 	try {
@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		
 		const resources = categoryIds.length > 0 
 			? await getResourcesByCategories(categoryIds)
-			: await getAllResources();
+			: await getAllResourcesLimited();
 			
 		return json(resources);
 	} catch (error) {
