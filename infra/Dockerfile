@@ -18,4 +18,3 @@ COPY --from=builder /app/src/lib/server/db/schema.ts ./src/lib/server/db/schema.
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
 EXPOSE 3000
 CMD sh -c "npx drizzle-kit migrate && node build"
-
