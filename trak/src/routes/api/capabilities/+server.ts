@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { OPENROUTER_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { CapabilitiesRequestSchema, capability } from '$lib/server/db/types';
 import { getAllCategories } from '$lib/server/db';
 
@@ -15,7 +15,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_KEY}`,
+        'Authorization': `Bearer ${env.OPENROUTER_KEY}`,
         'HTTP-Referer': 'http://localhost:5173', // Replace with your domain
         'X-Title': 'Trak',
         'Content-Type': 'application/json'
