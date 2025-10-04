@@ -44,12 +44,79 @@
 
 	// Resources and map state
 	let resources: any[] = [];
+	let clusteredResources: any[] = [];
 	let relevantCategoryIds: number[] = [];
+
+	// Clustering function
+	function clusterResources(resources: any[], radiusKm = 5) {
+		if (!resources || resources.length === 0) return [];
+		
+		const clusters: any[] = [];
+		const processed = new Set<number>();
+		
+		for (let i = 0; i < resources.length; i++) {
+			if (processed.has(i)) continue;
+			
+			const resource = resources[i];
+			const cluster = {
+				id: `cluster_${clusters.length}`,
+				latitude: resource.latitude,
+				longitude: resource.longitude,
+				resources: [resource],
+				count: 1
+			};
+			
+			processed.add(i);
+			
+			// Find nearby resources
+			for (let j = i + 1; j < resources.length; j++) {
+				if (processed.has(j)) continue;
+				
+				const other = resources[j];
+				const distance = calculateDistance(
+					resource.latitude, resource.longitude,
+					other.latitude, other.longitude
+				);
+				
+				if (distance <= radiusKm) {
+					cluster.resources.push(other);
+					cluster.count++;
+					processed.add(j);
+					
+					// Update cluster center (centroid)
+					cluster.latitude = cluster.resources.reduce((sum, r) => sum + r.latitude, 0) / cluster.resources.length;
+					cluster.longitude = cluster.resources.reduce((sum, r) => sum + r.longitude, 0) / cluster.resources.length;
+				}
+			}
+			
+			clusters.push(cluster);
+		}
+		
+		return clusters;
+	}
+
+	// Calculate distance between two coordinates in kilometers
+	function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+		const R = 6371; // Earth's radius in kilometers
+		const dLat = (lat2 - lat1) * Math.PI / 180;
+		const dLon = (lon2 - lon1) * Math.PI / 180;
+		const a = 
+			Math.sin(dLat/2) * Math.sin(dLat/2) +
+			Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+			Math.sin(dLon/2) * Math.sin(dLon/2);
+		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+		return R * c;
+	}
 
 	// Location analysis state
 	let locationAnalysis: any[] = [];
 	let analysisLoading = false;
 	let showLocationAnalysis = false;
+
+	// Reactive statements
+	$: if (resourceGroup.items.length > 0) {
+		updateRelevantResources();
+	}
 
 	// Resource group state
 	const availableCategories: Category[] = data.categories;
@@ -68,8 +135,8 @@
 		return CATEGORY_COLORS[(categoryId - 1) % CATEGORY_COLORS.length];
 	}
 
-	function createColoredIcon(categoryId: number | null | undefined) {
-		const color = getCategoryColor(categoryId);
+	function createColoredIcon(categoryId: number) {
+		const color = CATEGORY_COLORS[categoryId % CATEGORY_COLORS.length];
 		return `<div style="
 			width: 20px; height: 20px; border-radius: 50%;
 			background-color: ${color}; border: 2px solid white;
@@ -77,7 +144,19 @@
 		"></div>`;
 	}
 
-	function createLocationAnalysisIcon(location: any) {
+	function createClusteredIcon(count: number, categoryId: number = 0) {
+		const color = CATEGORY_COLORS[categoryId % CATEGORY_COLORS.length];
+		const size = Math.min(50, 20 + count * 3); // Bigger dots for more resources
+		const fontSize = Math.min(14, 8 + count);
+
+		return `<div style="
+			width: ${size}px; height: ${size}px; border-radius: 50%;
+			background-color: ${color}; border: 3px solid white;
+			box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+			display: flex; align-items: center; justify-content: center;
+			color: white; font-weight: bold; font-size: ${fontSize}px;
+		">${count}</div>`;
+	}	function createLocationAnalysisIcon(location: any) {
 		const hasResources = location.resourceGroups.length > 0;
 		const maxCount = hasResources
 			? Math.max(...location.resourceGroups.map((rg: any) => rg.count))
@@ -119,9 +198,21 @@
 	onMount(loadMapComponents);
 
 	// API functions
+	async function updateRelevantResources() {
+		// Get category IDs from current resource group items
+		const categoryIds = resourceGroup.items
+			.filter(item => item.type === 'resource')
+			.map(item => item.categoryId)
+			.filter(id => id !== undefined);
+		
+		relevantCategoryIds = categoryIds;
+		await loadRelevantResources();
+	}
+
 	async function loadRelevantResources() {
 		if (relevantCategoryIds.length === 0) {
 			resources = [];
+			clusteredResources = [];
 			return;
 		}
 
@@ -130,13 +221,16 @@
 			const response = await fetch(url);
 			if (response.ok) {
 				resources = await response.json();
+				clusteredResources = clusterResources(resources);
 			} else {
 				console.error('Failed to load resources');
 				resources = [];
+				clusteredResources = [];
 			}
 		} catch (err) {
 			console.error('Error loading resources:', err);
 			resources = [];
+			clusteredResources = [];
 		}
 	}
 
@@ -233,22 +327,13 @@
 
 	async function handleQueryWithAnalysis() {
 		try {
-			// If we have capability text, get the AI response first
-			if (capabilityText.trim()) {
-				await handleSubmit();
-				// Only proceed with analysis if we got a valid response
-				if (response && response.items && response.items.length > 0) {
-					await analyzeLocationCapabilities();
-				}
-			} else if (resourceGroup.items.length > 0) {
-				// If we have manual resource groups but no capability text,
-				// analyze directly with the manual resource group
+			// Only analyze if we have manual resource groups
+			if (resourceGroup.items.length > 0) {
 				await analyzeLocationCapabilities();
 			}
 		} catch (err) {
 			console.error('Error in query with analysis:', err);
 			// Make sure loading states are reset
-			loading = false;
 			analysisLoading = false;
 		}
 	}
@@ -266,6 +351,9 @@
 			if (response.ok) {
 				// Reset form on success
 				resourceGroup = { name: '', description: '', items: [] };
+				
+				// Load relevant resources for the manually created resource group
+				await updateRelevantResources();
 			} else {
 				const errorText = await response.text();
 				resourceGroupError = 'Error creating resource group: ' + errorText;
@@ -393,11 +481,9 @@
 					onclick={handleQueryWithAnalysis}
 					variant="outline"
 					type="button"
-					disabled={(!capabilityText.trim() && resourceGroup.items.length === 0) ||
-						loading ||
-						analysisLoading}
+					disabled={resourceGroup.items.length === 0 || analysisLoading}
 				>
-					{loading || analysisLoading ? 'Loading...' : 'Query'}
+					{analysisLoading ? 'Loading...' : 'Query'}
 				</Button>
 			</div>
 		</div>
@@ -409,30 +495,39 @@
 			<svelte:component this={Map} options={{ center: MAP_CENTER, zoom: MAP_ZOOM }}>
 				<svelte:component this={TileLayer} url={'https://tile.openstreetmap.org/{z}/{x}/{y}.png'} />
 
-				<!-- Show resource markers when not in analysis mode -->
+				<!-- Show clustered resource markers when not in analysis mode -->
 				{#if !showLocationAnalysis}
-					{#each resources as resource}
+					{#each clusteredResources as cluster}
 						<svelte:component
 							this={Marker}
-							latLng={[resource.latitude, resource.longitude]}
+							latLng={[cluster.latitude, cluster.longitude]}
 							options={{
 								icon: divIcon({
-									html: createColoredIcon(resource.categoryId),
+									html: createClusteredIcon(cluster.count, cluster.resources[0]?.categoryId || 0),
 									className: 'custom-marker',
-									iconSize: [24, 24],
-									iconAnchor: [12, 12],
-									popupAnchor: [0, -12]
+									iconSize: [Math.min(54, 24 + cluster.count * 3), Math.min(54, 24 + cluster.count * 3)],
+									iconAnchor: [Math.min(27, 12 + cluster.count * 1.5), Math.min(27, 12 + cluster.count * 1.5)],
+									popupAnchor: [0, -Math.min(27, 12 + cluster.count * 1.5)]
 								})
 							}}
 						>
 							<svelte:component this={Popup}>
-								<h3>{resource.name}</h3>
-								{#if resource.categoryName}
-									<p class="text-sm font-medium text-gray-600">Category: {resource.categoryName}</p>
-								{/if}
-								{#if resource.description}
-									<p>{resource.description}</p>
-								{/if}
+								<div class="min-w-48 max-w-80">
+									<h3 class="font-bold mb-2">Resource Cluster ({cluster.count} resources)</h3>
+									<div class="space-y-2 max-h-60 overflow-y-auto">
+										{#each cluster.resources as resource}
+											<div class="border-b border-gray-100 pb-2 last:border-b-0">
+												<h4 class="font-semibold text-sm">{resource.name}</h4>
+												{#if resource.categoryName}
+													<p class="text-xs text-gray-600">Category: {resource.categoryName}</p>
+												{/if}
+												{#if resource.description}
+													<p class="text-xs text-gray-500">{resource.description}</p>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								</div>
 							</svelte:component>
 						</svelte:component>
 					{/each}
