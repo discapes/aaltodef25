@@ -30,7 +30,9 @@ export const resourceGroup = z.object({
             count: z.number().int().min(0),
             hours_needed: z.number().optional(),
             hours_to_realize: z.number().optional(),
-            data: z.any, // Recursive reference to resourceGroup
+            get data() {
+                return resourceGroup
+            }
         })
     ]))
 });
@@ -102,7 +104,9 @@ export const createResourceGroupSchema = z.object({
         z.object({
             type: z.literal('group'),
             count: z.number().int().min(0),
-            data: z.any, // Recursive reference to createResourceGroupSchema
+            get data() {
+                return createResourceGroupSchema
+            }
         }),
         z.object({
             type: z.literal('existing-group'),
