@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trak
+  namespace: argocd
+spec:
+  project: default
+  source:
+    chart: trak
+    repoURL: gitea.miikat.dev/ci/trak-helm
+    targetRevision: "*"
+    helm:
+      releaseName: trak
+      valuesObject:
+        imagePullSecrets:
+          - name: pull-secret
+        ingress:
+          enabled: true
+          annotations:
+            cert-manager.io/cluster-issuer: acme-prod
+          hosts:
+            - host: trak.miikat.dev
+              paths:
+                - path: / 
+                  pathType: ImplementationSpecific
+          tls:
+            - hosts:
+                - trak.miikat.dev
+              secretName: trak-tls
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: trak
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

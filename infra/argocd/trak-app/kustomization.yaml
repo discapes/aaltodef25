@@ -1,0 +1,6 @@
+# note we don't specify namespace here
+resources:
+  - trak-helm.yaml
+  - trak-pull-secret.yaml
+  - trak-helm-secret.yaml
+  - letsencrypt-issuer.yaml
