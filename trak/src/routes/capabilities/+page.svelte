@@ -159,6 +159,12 @@
 			});
 		});
 
+		// If there's only 1 category, there can't be any bottlenecks (need comparison)
+		if (Object.keys(categoryStats).length <= 1) {
+			bottlenecks = [];
+			return;
+		}
+
 		// Calculate average extra percentage across all categories and locations
 		let allPercentages: number[] = [];
 		Object.values(categoryStats).forEach((stats) => {
