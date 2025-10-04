@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { createResourceGroupSchema } from '$lib/server/db/types';
+import { createResourceGroup } from '$lib/server/db/basicQueries';
 
 export const POST: RequestHandler = async ({ request }) => {
     try {
@@ -9,13 +10,15 @@ export const POST: RequestHandler = async ({ request }) => {
         // Validate the data
         const validatedData = createResourceGroupSchema.parse(data);
         
-        // TODO: Implement database insertion logic
-        console.log('Resource group data to be saved:', validatedData);
+        // Insert into database
+        const createdGroup = await createResourceGroup(validatedData);
         
-        // For now, just return success
         return json({ 
             message: 'Resource group created successfully',
-            data: validatedData 
+            data: {
+                id: createdGroup.id,
+                ...validatedData
+            }
         });
     } catch (error) {
         console.error('Error creating resource group:', error);

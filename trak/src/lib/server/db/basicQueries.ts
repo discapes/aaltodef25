@@ -1,7 +1,7 @@
 import { db } from './index';
-import { categories, resources, resourceCategories, resourceGroups } from './schema';
+import { categories, resources, resourceCategories, resourceGroups, resourceGroupCategories, resourceGroupSubgroups } from './schema';
 import { eq, inArray, sql } from 'drizzle-orm';
-import type { NewResource } from './types';
+import type { NewResource, CreateResourceGroup } from './types';
 
 export async function getAllCategories() {
     return db
@@ -124,5 +124,54 @@ export async function addNewResource(newResourceData: NewResource, locationId: n
             ...insertedResource,
             categories: categoryRecords,
         };
+    });
+}
+
+export async function createResourceGroup(resourceGroupData: CreateResourceGroup): Promise<{ id: number; name: string; description: string | null }> {
+    return await db.transaction(async (tx) => {
+        
+        async function createResourceGroupRecursive(data: CreateResourceGroup): Promise<{ id: number; name: string; description: string | null }> {
+            // Insert the main resource group
+            const [insertedGroup] = await tx.insert(resourceGroups).values({
+                name: data.name,
+                description: data.description || null,
+            }).returning({ 
+                id: resourceGroups.id, 
+                name: resourceGroups.name,
+                description: resourceGroups.description
+            });
+
+            // Process items
+            for (const item of data.items) {
+                if (item.type === 'resource') {
+                    // Insert into resource_group_categories
+                    await tx.insert(resourceGroupCategories).values({
+                        resourceGroupId: insertedGroup.id,
+                        categoryId: item.data.id,
+                    });
+                } else if (item.type === 'existing-group') {
+                    // Insert into resource_group_subgroups
+                    for (let i = 0; i < item.count; i++) {
+                        await tx.insert(resourceGroupSubgroups).values({
+                            parent_group_id: insertedGroup.id,
+                            sub_group_id: item.data.id,
+                        });
+                    }
+                } else if (item.type === 'group') {
+                    // Recursively create new sub-groups
+                    for (let i = 0; i < item.count; i++) {
+                        const subGroup = await createResourceGroupRecursive(item.data);
+                        await tx.insert(resourceGroupSubgroups).values({
+                            parent_group_id: insertedGroup.id,
+                            sub_group_id: subGroup.id,
+                        });
+                    }
+                }
+            }
+
+            return insertedGroup;
+        }
+
+        return await createResourceGroupRecursive(resourceGroupData);
     });
 }
