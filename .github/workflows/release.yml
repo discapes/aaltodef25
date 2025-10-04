@@ -11,8 +11,10 @@ jobs:
   release:
     name: Release
     # "ubuntu-22.04-arm, ubuntu-24.04-arm and windows-11-arm are not supported yet for private repositories"
+    # we can't use --platform=linux/arm64 since we would need qemu-user-static or something to avoid exec format error
     # runs-on: ubuntu-24.04-arm
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write # to be able to publish a GitHub release
       issues: write # to be able to comment on released issues
@@ -51,7 +53,7 @@ jobs:
             HELM_REPO="oci://$REPO-helm"
             export REGISTRY_AUTH_FILE="$PWD/registry-auth.json"
             podman login -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" gitea.miikat.dev
-            podman build --platform=linux/arm64 -t "$IMAGE" -f infra/Dockerfile . 
+            podman build -t "$IMAGE" -f infra/Dockerfile . 
             podman push "$IMAGE"
             helm dependency update infra/helm/trak
             helm package infra/helm/trak --version "$VERSION" --app-version "$VERSION"
