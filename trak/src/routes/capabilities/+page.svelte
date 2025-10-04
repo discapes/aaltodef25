@@ -3,7 +3,6 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
 	import ResourceGroupForm from '../resource-groups/new/ResourceGroupForm.svelte';
 	import type { PageData } from './$types';
 	import type {
@@ -13,6 +12,10 @@
 		CreateResourceGroup,
 		Category
 	} from '$lib/server/db/types';
+
+	// Import map components directly
+	import { Map, TileLayer, Marker, Popup } from 'sveaflet';
+	import { divIcon } from 'leaflet';
 
 	export let data: PageData;
 
@@ -31,11 +34,6 @@
 		'#f97316',
 		'#6366f1'
 	] as const;
-
-	// Map components (loaded dynamically)
-	let Map: any, TileLayer: any, Marker: any, Popup: any, divIcon: any;
-	let mapComponentsLoaded = false;
-	let mapInstance: any = null;
 
 	// Capabilities state
 	let capabilityText = '';
@@ -234,10 +232,8 @@
 	}
 
 	// Simplified clustering - only update when resources array length changes
-	$: if (resources.length > 0 && resources.length !== clusteredResources.length) {
+	$: if (resources.length !== clusteredResources.length) {
 		clusteredResources = clusterResources(resources);
-	} else if (resources.length === 0) {
-		clusteredResources = [];
 	}
 
 	// Helper function to group sources by category and transportation time
@@ -323,32 +319,6 @@
 			color: white; font-weight: bold; font-size: 12px;
 		">${maxCount}</div>`;
 	}
-
-	// Load map components on client side
-	async function loadMapComponents() {
-		if (!browser) return;
-
-		try {
-			// Add a small delay to ensure DOM is ready
-			await new Promise(resolve => setTimeout(resolve, 100));
-			
-			const [sveaflet, leaflet] = await Promise.all([import('sveaflet'), import('leaflet')]);
-
-			Map = sveaflet.Map;
-			TileLayer = sveaflet.TileLayer;
-			Marker = sveaflet.Marker;
-			Popup = sveaflet.Popup;
-			divIcon = leaflet.divIcon;
-
-			// Add another small delay before marking as loaded
-			await new Promise(resolve => setTimeout(resolve, 50));
-			mapComponentsLoaded = true;
-		} catch (err) {
-			console.error('Failed to load map components:', err);
-		}
-	}
-
-	onMount(loadMapComponents);
 
 	// API functions
 	async function updateRelevantResources() {
@@ -486,7 +456,14 @@
 
 	async function handleQueryWithAnalysis() {
 		try {
-			// Only analyze if we have manual resource groups
+			// First, run the AI prompt if we have capability text
+			if (capabilityText.trim()) {
+				await handleSubmit();
+				// Wait a bit for the resource group to be populated from the AI response
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+
+			// Then analyze locations if we have resource groups (either from AI or manual)
 			if (resourceGroup.items.length > 0) {
 				await analyzeLocationCapabilities();
 			}
@@ -494,6 +471,7 @@
 			console.error('Error in query with analysis:', err);
 			// Make sure loading states are reset
 			analysisLoading = false;
+			loading = false;
 		}
 	}
 	async function handleResourceGroupSubmit() {
@@ -656,7 +634,7 @@
 					onclick={handleQueryWithAnalysis}
 					variant="outline"
 					type="button"
-					disabled={resourceGroup.items.length === 0 || analysisLoading}
+					disabled={(resourceGroup.items.length === 0 && !capabilityText.trim()) || analysisLoading}
 				>
 					{analysisLoading ? 'Loading...' : 'Query'}
 				</Button>
@@ -666,215 +644,192 @@
 
 	<!-- Center Panel - Map -->
 	<div class="relative flex-1">
-		{#if mapComponentsLoaded}
-			<svelte:component this={Map} options={{ center: MAP_CENTER, zoom: MAP_ZOOM }}>
-				<svelte:component this={TileLayer} url={'https://tile.openstreetmap.org/{z}/{x}/{y}.png'} />
+		<Map options={{ center: MAP_CENTER, zoom: MAP_ZOOM }}>
+			<TileLayer url={'https://tile.openstreetmap.org/{z}/{x}/{y}.png'} />
 
-				<!-- Show clustered resource markers when not in analysis mode -->
-				{#if !showLocationAnalysis && clusteredResources.length > 0}
-					{#each clusteredResources as cluster (cluster.id)}
-						<svelte:component
-							this={Marker}
-							latLng={[cluster.latitude, cluster.longitude]}
-							options={{
-								icon: divIcon({
-									html: createClusteredIcon(
-										cluster.count,
-										cluster.resources[0]?.categoryId || 0
-									),
-									className: 'custom-marker',
-									iconSize: [
-										Math.min(54, 24 + cluster.count * 3),
-										Math.min(54, 24 + cluster.count * 3)
-									],
-									iconAnchor: [
-										Math.min(27, 12 + cluster.count * 1.5),
-										Math.min(27, 12 + cluster.count * 1.5)
-									],
-									popupAnchor: [0, -Math.min(27, 12 + cluster.count * 1.5)]
-								})
-							}}
-						>
-							{@const categoryBreakdown = cluster.resources.reduce((acc: any, r: any) => {
-								const category = r.categoryName || 'Unknown';
-								acc[category] = (acc[category] || 0) + 1;
-								return acc;
-							}, {})}
-							<svelte:component this={Popup}>
-								<div class="min-w-48 max-w-80">
-									<h3 class="mb-2 font-bold">
-										Resource Cluster ({cluster.count} Total)
-									</h3>
+			<!-- Show clustered resource markers when not in analysis mode -->
+			{#if !showLocationAnalysis && clusteredResources.length > 0}
+				{#each clusteredResources as cluster (cluster.id)}
+					<Marker
+						latLng={[cluster.latitude, cluster.longitude]}
+						options={{
+							icon: divIcon({
+								html: createClusteredIcon(cluster.count, cluster.resources[0]?.categoryId || 0),
+								className: 'custom-marker',
+								iconSize: [
+									Math.min(54, 24 + cluster.count * 3),
+									Math.min(54, 24 + cluster.count * 3)
+								],
+								iconAnchor: [
+									Math.min(27, 12 + cluster.count * 1.5),
+									Math.min(27, 12 + cluster.count * 1.5)
+								],
+								popupAnchor: [0, -Math.min(27, 12 + cluster.count * 1.5)]
+							})
+						}}
+					>
+						{@const categoryBreakdown = cluster.resources.reduce((acc: any, r: any) => {
+							const category = r.categoryName || 'Unknown';
+							acc[category] = (acc[category] || 0) + 1;
+							return acc;
+						}, {})}
+						<Popup>
+							<div class="min-w-48 max-w-80">
+								<h3 class="mb-2 font-bold">
+									Resource Cluster ({cluster.count} Total)
+								</h3>
 
-									{#if Object.keys(categoryBreakdown).length > 1}
-										<div class="mb-3 rounded bg-gray-50 p-2">
-											{#each Object.entries(categoryBreakdown) as [category, count]}
-												<div class="text-xs text-gray-600">• {category}: {count}</div>
-											{/each}
-										</div>
-									{/if}
-								</div>
-							</svelte:component>
-						</svelte:component>
-					{/each}
-				{/if}
-
-				<!-- Show location analysis markers -->
-				{#if showLocationAnalysis && locationAnalysis.length > 0}
-					{#each locationAnalysis as location}
-						<svelte:component
-							this={Marker}
-							latLng={[
-								location.location.latitude || MAP_CENTER[0],
-								location.location.longitude || MAP_CENTER[1]
-							]}
-							options={{
-								icon: divIcon({
-									html: createLocationAnalysisIcon(location),
-									className: 'custom-marker',
-									iconSize: [40, 40],
-									iconAnchor: [20, 20],
-									popupAnchor: [0, -20]
-								})
-							}}
-						>
-							<svelte:component this={Popup}>
-								<div class="min-w-48 max-w-80">
-									<h3 class="font-bold">{location.location.name}</h3>
-									{#if location.resourceGroups.length > 0}
-										{#each location.resourceGroups as rg}
-											<div class="mt-2 space-y-1 border-b border-gray-100 pb-2 last:border-b-0">
-												{#if rg.sources && rg.sources.length > 0}
-													{@const groupedSources = groupSources(rg.sources)}
-													{@const localUnits = groupedSources
-														.filter((s: any) => s.transportationTimeHours === 0)
-														.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
-													{@const transferredUnits = groupedSources
-														.filter((s: any) => s.transportationTimeHours > 0)
-														.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
-													{@const maxTransportTime = Math.max(
-														...groupedSources
-															.filter((s: any) => s.transportationTimeHours > 0)
-															.map((s: any) => s.transportationTimeHours),
-														0
-													)}
-													<div class="flex justify-between">
-														<span class="text-sm">Available now:</span>
-														<span class="font-semibold text-green-600">{localUnits}</span>
-													</div>
-													{#if transferredUnits > 0}
-														<div class="flex justify-between">
-															<span class="text-sm"
-																>{localUnits + transferredUnits} in {maxTransportTime}h:</span
-															>
-															<span class="font-semibold text-blue-600">total</span>
-														</div>
-													{/if}
-													{#if rg.time_to_realize}
-														<div class="flex justify-between">
-															<span class="text-sm">Time to full capacity:</span>
-															<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
-														</div>
-													{/if}
-												{:else}
-													<div class="flex justify-between">
-														<span class="text-sm">Available now:</span>
-														<span class="font-semibold text-green-600">{rg.count}</span>
-													</div>
-													{#if rg.time_to_realize}
-														<div class="flex justify-between">
-															<span class="text-sm">Time to full capacity:</span>
-															<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
-														</div>
-													{/if}
-												{/if}
-
-												{#if rg.sources && rg.sources.length > 0}
-													{@const groupedSources = groupSources(rg.sources)}
-													<div class="mt-1">
-														<div class="mb-1 text-xs font-medium text-gray-700">Sources:</div>
-
-														<!-- Local Resources -->
-														{#each groupedSources.filter((s: any) => s.transportationTimeHours === 0) as source}
-															{@const typedSource = source as any}
-															{@const bottleneckColor = getBottleneckColor(
-																typedSource.categoryName
-															)}
-															<div
-																class="mb-1 rounded px-2 py-1 text-xs text-gray-600"
-																style="background-color: {bottleneckColor
-																	? bottleneckColor + '20'
-																	: '#f0fdf4'}; border-left: 3px solid {bottleneckColor ||
-																	'#10b981'}"
-															>
-																<div class="flex items-center justify-between">
-																	<span
-																		class="font-medium"
-																		style="color: {bottleneckColor || '#15803d'}"
-																		>🏠 {typedSource.categoryName}</span
-																	>
-																	<span
-																		class="font-semibold"
-																		style="color: {bottleneckColor || '#166534'}"
-																		>{typedSource.unitsTransferred} local</span
-																	>
-																</div>
-																{#if typedSource.remainingAtLocation !== undefined}
-																	<div
-																		class="mt-1 text-xs"
-																		style="color: {bottleneckColor || '#16a34a'}"
-																	>
-																		{typedSource.remainingAtLocation} additional available at location
-																	</div>
-																{/if}
-															</div>
-														{/each}
-
-														<!-- Transferred Resources -->
-														{#each groupedSources.filter((s: any) => s.transportationTimeHours > 0) as source}
-															{@const typedSource = source as any}
-															<div class="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-gray-600">
-																<div class="flex items-center justify-between">
-																	<span class="font-medium text-blue-700"
-																		>🚛 {typedSource.categoryName}</span
-																	>
-																	<span class="font-semibold text-blue-800"
-																		>{typedSource.unitsTransferred} units</span
-																	>
-																</div>
-																<div class="mt-1 text-xs text-blue-600">
-																	From {typedSource.sourceLocationName} • {typedSource.transportationTimeHours}h
-																	travel
-																</div>
-															</div>
-														{/each}
-													</div>
-												{/if}
-											</div>
+								{#if Object.keys(categoryBreakdown).length > 1}
+									<div class="mb-3 rounded bg-gray-50 p-2">
+										{#each Object.entries(categoryBreakdown) as [category, count]}
+											<div class="text-xs text-gray-600">• {category}: {count}</div>
 										{/each}
-									{:else}
-										<p class="mt-1 text-sm text-gray-500">No resource groups available</p>
-									{/if}
-								</div>
-							</svelte:component>
-						</svelte:component>
-					{/each}
-				{/if}
-			</svelte:component>
-		{:else if browser}
-			<div class="flex h-full items-center justify-center bg-gray-50">
-				<div class="text-center">
-					<div
-						class="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"
-					></div>
-					<p class="text-gray-600">Loading map...</p>
-				</div>
-			</div>
-		{:else}
-			<div class="flex h-full items-center justify-center bg-gray-50">
-				<p class="text-gray-600">Map will load on client side</p>
-			</div>
-		{/if}
+									</div>
+								{/if}
+							</div>
+						</Popup>
+					</Marker>
+				{/each}
+			{/if}
+
+			<!-- Show location analysis markers -->
+			{#if showLocationAnalysis && locationAnalysis.length > 0}
+				{#each locationAnalysis as location}
+					<Marker
+						latLng={[
+							location.location.latitude || MAP_CENTER[0],
+							location.location.longitude || MAP_CENTER[1]
+						]}
+						options={{
+							icon: divIcon({
+								html: createLocationAnalysisIcon(location),
+								className: 'custom-marker',
+								iconSize: [40, 40],
+								iconAnchor: [20, 20],
+								popupAnchor: [0, -20]
+							})
+						}}
+					>
+						<Popup>
+							<div class="min-w-48 max-w-80">
+								<h3 class="font-bold">{location.location.name}</h3>
+								{#if location.resourceGroups.length > 0}
+									{#each location.resourceGroups as rg}
+										<div class="mt-2 space-y-1 border-b border-gray-100 pb-2 last:border-b-0">
+											{#if rg.sources && rg.sources.length > 0}
+												{@const groupedSources = groupSources(rg.sources)}
+												{@const localUnits = groupedSources
+													.filter((s: any) => s.transportationTimeHours === 0)
+													.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
+												{@const transferredUnits = groupedSources
+													.filter((s: any) => s.transportationTimeHours > 0)
+													.reduce((sum: number, s: any) => sum + s.unitsTransferred, 0)}
+												{@const maxTransportTime = Math.max(
+													...groupedSources
+														.filter((s: any) => s.transportationTimeHours > 0)
+														.map((s: any) => s.transportationTimeHours),
+													0
+												)}
+												<div class="flex justify-between">
+													<span class="text-sm">Available now:</span>
+													<span class="font-semibold text-green-600">{localUnits}</span>
+												</div>
+												{#if transferredUnits > 0}
+													<div class="flex justify-between">
+														<span class="text-sm"
+															>{localUnits + transferredUnits} in {maxTransportTime}h:</span
+														>
+														<span class="font-semibold text-blue-600">total</span>
+													</div>
+												{/if}
+												{#if rg.time_to_realize}
+													<div class="flex justify-between">
+														<span class="text-sm">Time to full capacity:</span>
+														<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
+													</div>
+												{/if}
+											{:else}
+												<div class="flex justify-between">
+													<span class="text-sm">Available now:</span>
+													<span class="font-semibold text-green-600">{rg.count}</span>
+												</div>
+												{#if rg.time_to_realize}
+													<div class="flex justify-between">
+														<span class="text-sm">Time to full capacity:</span>
+														<span class="font-semibold text-blue-600">{rg.time_to_realize}h</span>
+													</div>
+												{/if}
+											{/if}
+
+											{#if rg.sources && rg.sources.length > 0}
+												{@const groupedSources = groupSources(rg.sources)}
+												<div class="mt-1">
+													<div class="mb-1 text-xs font-medium text-gray-700">Sources:</div>
+
+													<!-- Local Resources -->
+													{#each groupedSources.filter((s: any) => s.transportationTimeHours === 0) as source}
+														{@const typedSource = source as any}
+														{@const bottleneckColor = getBottleneckColor(typedSource.categoryName)}
+														<div
+															class="mb-1 rounded px-2 py-1 text-xs text-gray-600"
+															style="background-color: {bottleneckColor
+																? bottleneckColor + '20'
+																: '#f0fdf4'}; border-left: 3px solid {bottleneckColor || '#10b981'}"
+														>
+															<div class="flex items-center justify-between">
+																<span
+																	class="font-medium"
+																	style="color: {bottleneckColor || '#15803d'}"
+																	>🏠 {typedSource.categoryName}</span
+																>
+																<span
+																	class="font-semibold"
+																	style="color: {bottleneckColor || '#166534'}"
+																	>{typedSource.unitsTransferred} local</span
+																>
+															</div>
+															{#if typedSource.remainingAtLocation !== undefined}
+																<div
+																	class="mt-1 text-xs"
+																	style="color: {bottleneckColor || '#16a34a'}"
+																>
+																	{typedSource.remainingAtLocation} additional available at location
+																</div>
+															{/if}
+														</div>
+													{/each}
+
+													<!-- Transferred Resources -->
+													{#each groupedSources.filter((s: any) => s.transportationTimeHours > 0) as source}
+														{@const typedSource = source as any}
+														<div class="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-gray-600">
+															<div class="flex items-center justify-between">
+																<span class="font-medium text-blue-700"
+																	>🚛 {typedSource.categoryName}</span
+																>
+																<span class="font-semibold text-blue-800"
+																	>{typedSource.unitsTransferred} units</span
+																>
+															</div>
+															<div class="mt-1 text-xs text-blue-600">
+																From {typedSource.sourceLocationName} • {typedSource.transportationTimeHours}h
+																travel
+															</div>
+														</div>
+													{/each}
+												</div>
+											{/if}
+										</div>
+									{/each}
+								{:else}
+									<p class="mt-1 text-sm text-gray-500">No resource groups available</p>
+								{/if}
+							</div>
+						</Popup>
+					</Marker>
+				{/each}
+			{/if}
+		</Map>
 	</div>
 
 	<!-- Right Panel - Location Analysis -->
