@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { CapabilitiesRequestSchema, capability } from '$lib/server/db/types';
 import { getAllCategoriesAndResourceGroupNames } from '$lib/server/db';
+import z from 'zod';
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -30,6 +31,7 @@ export const POST: RequestHandler = async ({ request }) => {
             the given capability. You should consider the DOTMLPF doctrine, and return categories
             that are based on doctrine, organization, training, materiel, leadership, personnel or facilities.
             If there are not enough categories or some important ones are missing, simply return an empty capabilities array.
+            You also have access to the names of several resource groups. These are larger collections of resources that contain multiple categories.
             Categories are ${categories.join(", ")}.
             Resource groups are ${resource_groups.join(", ")}
             `
@@ -43,19 +45,7 @@ export const POST: RequestHandler = async ({ request }) => {
           json_schema: {
             name: "capability_analysis",
             strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                categories: {
-                  type: "array",
-                  items: {
-                    type: "string"
-                  }
-                }
-              },
-              required: ["categories"],
-              additionalProperties: false
-            }
+            schema: z.toJSONSchema(capability)
           }
         }
       })

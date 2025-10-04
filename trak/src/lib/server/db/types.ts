@@ -38,31 +38,22 @@ export const resourceGroup = z.object({
 });
 
 export const capability = z.object({
-    categories: z.array(z.union(
-        [
-            z.string(),
-        ]
-    ))
+    category_names: z.array(z.string()),
+    resource_group_names: z.array(z.string())
 });
-
 
 // Capabilities API schemas
 export const CapabilitiesRequestSchema = z.object({
-  message: z.string(),
+    message: z.string(),
 });
 
 export const CapabilitiesResponseSchema = z.object({
-  success: z.boolean(),
-  response: capability,
-  usage: z.object({
-    prompt_tokens: z.number(),
-    completion_tokens: z.number(),
-    total_tokens: z.number()
-  }).optional()
+    success: z.boolean(),
+    response: capability,
 });
 
 export const CapabilitiesErrorSchema = z.object({
-  error: z.string()
+    error: z.string()
 });
 
 export type CapabilitiesRequest = z.infer<typeof CapabilitiesRequestSchema>;
