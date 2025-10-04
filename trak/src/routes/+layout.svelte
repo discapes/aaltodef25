@@ -17,16 +17,10 @@
 				<a href="/" class="text-lg font-semibold">TRAK</a>
 				<div class="flex space-x-2">
 					<Button variant="ghost" size="sm">
-						<a href="/">Home</a>
-					</Button>
-					<Button variant="ghost" size="sm">
 						<a href="/map">Map</a>
 					</Button>
 					<Button variant="ghost" size="sm">
 						<a href="/capabilities">Capabilities</a>
-					</Button>
-					<Button variant="ghost" size="sm">
-						<a href="/resource-groups/new">New Resource Group</a>
 					</Button>
 				</div>
 			</nav>
