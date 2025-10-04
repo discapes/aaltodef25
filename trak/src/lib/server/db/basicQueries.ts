@@ -1,5 +1,6 @@
 import { db } from './index';
-import { categories, resources } from './schema';
+import { categories, resources, resourceCategories } from './schema';
+import { eq, inArray } from 'drizzle-orm';
 
 export async function getAllCategories() {
     return db
@@ -12,6 +13,29 @@ export async function getAllResources() {
     return db
         .select()
         .from(resources)
+        .execute();
+}
+
+export async function getResourcesByCategories(categoryIds: number[] = []) {
+    if (categoryIds.length === 0) {
+        // If no categories specified, return all resources
+        return getAllResources();
+    }
+    
+    return db
+        .select({
+            id: resources.id,
+            name: resources.name,
+            description: resources.description,
+            locationId: resources.locationId,
+            latitude: resources.latitude,
+            longitude: resources.longitude,
+            createdAt: resources.createdAt,
+            updatedAt: resources.updatedAt
+        })
+        .from(resources)
+        .innerJoin(resourceCategories, eq(resources.id, resourceCategories.resourceId))
+        .where(inArray(resourceCategories.categoryId, categoryIds))
         .execute();
 }
 
