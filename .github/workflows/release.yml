@@ -47,10 +47,11 @@ jobs:
             REPO=gitea.miikat.dev/ci/trak
             IMAGE="$REPO:$VERSION"
             HELM_REPO="oci://$REPO-helm"
+            export REGISTRY_AUTH_FILE="$PWD/registry-auth.json"
             podman login -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" gitea.miikat.dev
             podman build -t "$IMAGE" -f infra/Dockerfile .
             podman push "$IMAGE"
             helm dependency update infra/helm/trak
             helm package infra/helm/trak --version "$VERSION" --app-version "$VERSION"
-            helm push "trak-$VERSION.tgz" "$HELM_REPO"
+            helm --registry-config "$REGISTRY_AUTH_FILE" push "trak-$VERSION.tgz" "$HELM_REPO"
             
