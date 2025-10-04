@@ -52,6 +52,16 @@ export const capabilityResourceGroup = z.object({
     }))
 });
 
+export const telegramMessage = z.object({
+    message: z.string(),
+})
+
+export const newResource = z.object({
+    name: z.string(),
+    telegram: z.string(),
+    categories: z.array(z.string())
+})
+
 export const capability = z.object({
     category_names: z.array(z.string()),
     resource_group_names: z.array(z.string()),
@@ -152,3 +162,4 @@ export type ResourceGroup = z.infer<typeof resourceGroup>;
 export type Category = z.infer<typeof category>;
 export type Location = z.infer<typeof location>;
 export type CreateResourceGroup = z.infer<typeof createResourceGroupSchema>;
+export type NewResource = z.infer<typeof newResource>;

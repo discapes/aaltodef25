@@ -1,6 +1,7 @@
 import { db } from './index';
 import { categories, resources, resourceCategories, resourceGroups } from './schema';
 import { eq, inArray, sql } from 'drizzle-orm';
+import type { NewResource } from './types';
 
 export async function getAllCategories() {
     return db
@@ -17,6 +18,7 @@ export async function getAllCategoriesAndResourceGroupNames() {
                 .from(resourceGroups)
         )
 }
+
 
 export async function getAllResources() {
     return db
@@ -72,4 +74,56 @@ export async function getAllResourceGroups() {
         { id: 2, name: 'Medical Supplies', description: 'Basic medical equipment and supplies' },
         { id: 3, name: 'Communication Equipment', description: 'Radios, phones, and communication gear' }
     ];
+}
+
+export async function addNewResource(newResourceData: NewResource, locationId: number, latitude: number, longitude: number) {
+    // Start a transaction to ensure data consistency
+    return await db.transaction(async (tx) => {
+        // Insert the resource
+        const [insertedResource] = await tx
+            .insert(resources)
+            .values({
+                name: newResourceData.name,
+                description: `Telegram: ${newResourceData.telegram}`, // Store telegram info in description
+                locationId,
+                latitude,
+                longitude,
+            })
+            .returning({
+                id: resources.id,
+                name: resources.name,
+                description: resources.description,
+                locationId: resources.locationId,
+                latitude: resources.latitude,
+                longitude: resources.longitude,
+                createdAt: resources.createdAt,
+                updatedAt: resources.updatedAt,
+            });
+
+        // Get category IDs for the provided category names
+        const categoryRecords = await tx
+            .select({ id: categories.id, name: categories.name })
+            .from(categories)
+            .where(inArray(categories.name, newResourceData.categories))
+            .execute();
+
+        // Create relationships between the resource and categories
+        if (categoryRecords.length > 0) {
+            const resourceCategoryInserts = categoryRecords.map(category => ({
+                resourceId: insertedResource.id,
+                categoryId: category.id,
+            }));
+
+            await tx
+                .insert(resourceCategories)
+                .values(resourceCategoryInserts)
+                .execute();
+        }
+
+        // Return the created resource with its categories
+        return {
+            ...insertedResource,
+            categories: categoryRecords,
+        };
+    });
 }

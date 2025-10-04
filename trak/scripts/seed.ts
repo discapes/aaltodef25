@@ -4,7 +4,6 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { categories, locations, resources, resourceCategories, resourceGroups, resourceGroupCategories } from '../src/lib/server/db/schema';
 import { like, inArray } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
-import { env } from 'node:process';
 
 
 // Get the database URL from environment

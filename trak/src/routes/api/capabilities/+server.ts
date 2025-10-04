@@ -84,7 +84,6 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({
       success: true,
       response: data,
-      usage: resBody.usage
     });
   } catch (error) {
     console.error('Error calling OpenRouter:', error);
