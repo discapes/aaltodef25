@@ -47,6 +47,8 @@ export const capabilityResourceGroup = z.object({
         type: z.literal('resource'),
         count: z.number().int().min(0),
         categoryName: z.string(), // Category name instead of full category object
+        hours_needed: z.number().optional(), // Hours of operation/usage
+        hours_to_realize: z.number().optional(), // Hours to deploy/setup
     }))
 });
 
@@ -86,13 +88,25 @@ export const locationWithResourceCounts = z.object({
     resources: z.array(z.object({
         categoryId: z.number(),
         categoryName: z.string(),
-        count: z.number().min(0),
+        count: z.number().min(0), // Total available units
         used: z.number().min(0).optional(), // How many of this category are used by resource groups
+        remaining: z.number().min(0).optional(), // How many units remain after allocation
+        transferred: z.number().min(0).optional(), // How many units were transferred to other locations
     })),
     resourceGroups: z.array(z.object({
         group: resourceGroup,
         count: z.number().min(0),
         time_to_realize: z.number().min(0).optional(), // Hours needed to realize this group (including travel time)
+        sources: z.array(z.object({
+            categoryId: z.number(),
+            categoryName: z.string(),
+            sourceLocationId: z.number(),
+            sourceLocationName: z.string(),
+            unitsTransferred: z.number().min(0), // Total units of this resource transferred
+            transportationTimeHours: z.number().min(0),
+            distanceKm: z.number().min(0),
+            count: z.number().min(0) // Number of resource groups this source contributes to
+        })).optional() // Sources for resource transfers
     })),
     categoryUsage: z.record(z.number(), z.number()).optional(), // Category ID to usage count mapping
 });

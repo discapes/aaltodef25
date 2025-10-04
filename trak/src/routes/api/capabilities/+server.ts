@@ -41,8 +41,12 @@ export const POST: RequestHandler = async ({ request }) => {
               * type: "resource" 
               * count: number of units needed
               * categoryName: exact name from the available categories
+              * hours_needed: estimated hours of operation/usage (optional, for ongoing activities)
+              * hours_to_realize: estimated hours to deploy/setup (optional, for initial setup time)
             
-            Only use categories from the available list. Choose realistic quantities based on military operational requirements.`
+            Only use categories from the available list. Choose realistic quantities and time estimates based on military operational requirements.
+            For timing estimates: hours_to_realize should reflect deployment/setup time (e.g., 2-24 hours), 
+            hours_needed should reflect operational duration (e.g., 8-72 hours for missions).`
           },
           { role: "user", content: message }
         ],
