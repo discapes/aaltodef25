@@ -16,12 +16,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    if update.message is None:
+        raise Exception("Message missing unexpectedly")
+    user_id = update.effective_user.id # type: ignore
     text = update.message.text
 
     # If the model produced structured JSON for submission, catch it
     try:
-        r = requests.post(f"{API_BASE_URL}/api/telegram", json={"message": text}, timeout=20)
+        r = requests.post(f"{API_BASE_URL}/api/telegram", json={"message": text, "user_id": user_id}, timeout=20)
         if r.status_code == 200 or r.status_code == 201:
             await update.message.reply_text("Item submitted to inventory.")
         elif r.status_code == 422:
@@ -32,6 +34,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Failed to parse/submit: {e}")
 
 def main():
+    if TELEGRAM_TOKEN is None:
+        logger.error("TELEGRAM_BOT_TOKEN environment variable is not set.")
+        raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required.")
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
