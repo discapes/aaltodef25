@@ -3,5 +3,8 @@ resources:
   - trak.yaml
   - trak-github-token.yaml
   - base.yaml
-  # these live in the same repo
+  # base and trak live in the same repo
   # - base-github-token.yaml
+  - cnpg.yaml
+  - traefik.yaml
+  - cert-manager.yaml

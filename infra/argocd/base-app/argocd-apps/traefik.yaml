@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+spec:
+  project: default
+  source:
+    chart: traefik
+    repoURL: https://traefik.github.io/charts
+    targetRevision: "*"
+    helm:
+      releaseName: traefik
+      valuesObject:
+        ingressRoute:
+          dashboard:
+            enabled: true
+            #kubectl port-forward $(kubectl get pods --selector "app.kubernetes.io/name=traefik" --output=name -n traefik) 8081:8080 -n traefik
+        service:
+          annotations:
+            load-balancer.hetzner.cloud/location: hel1
+            load-balancer.hetzner.cloud/use-private-ip: "true"
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: traefik
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
