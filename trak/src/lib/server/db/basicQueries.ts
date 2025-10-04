@@ -84,7 +84,6 @@ export async function addNewResource(newResourceData: NewResource, locationId: n
             .insert(resources)
             .values({
                 name: newResourceData.name,
-                description: `Telegram: ${newResourceData.telegram}`, // Store telegram info in description
                 locationId,
                 latitude,
                 longitude,

@@ -21,11 +21,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # If the model produced structured JSON for submission, catch it
     try:
-        r = requests.post(f"{API_BASE_URL}/api/telegram", json={"message": text}, timeout=10)
+        r = requests.post(f"{API_BASE_URL}/api/telegram", json={"message": text}, timeout=20)
         if r.status_code == 200 or r.status_code == 201:
-            await update.message.reply_text("✅ Item submitted to inventory.")
+            await update.message.reply_text("Item submitted to inventory.")
+        elif r.status_code == 422:
+            await update.message.reply_text("Sorry, couldn't process your message. Please try using different wording.")
         else:
-            await update.message.reply_text(f"⚠️ API error: {r.status_code}")
+            await update.message.reply_text(f"API error: {r.status_code}")
     except Exception as e:
         logger.error(f"Failed to parse/submit: {e}")
 
