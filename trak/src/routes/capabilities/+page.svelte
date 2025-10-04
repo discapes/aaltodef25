@@ -2,7 +2,6 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { onMount } from 'svelte';
 	import ResourceGroupForm from '../resource-groups/new/ResourceGroupForm.svelte';
 	import type { PageData } from './$types';
 	import type {
@@ -238,21 +237,21 @@
 
 	// Helper function to group sources by category and transportation time
 	function groupSources(sources: any[]) {
-		const grouped = new Map();
+		const grouped: Record<string, any> = {};
 
 		sources.forEach((source) => {
 			const key = `${source.categoryName}_${source.transportationTimeHours}_${source.sourceLocationName || 'local'}`;
 
-			if (grouped.has(key)) {
-				const existing = grouped.get(key);
+			if (grouped[key]) {
+				const existing = grouped[key];
 				existing.unitsTransferred += source.unitsTransferred;
 				existing.remainingAtLocation += source.remainingAtLocation || 0;
 			} else {
-				grouped.set(key, { ...source });
+				grouped[key] = { ...source };
 			}
 		});
 
-		return Array.from(grouped.values());
+		return Object.values(grouped);
 	}
 
 	// Helper function to get bottleneck color for a category
