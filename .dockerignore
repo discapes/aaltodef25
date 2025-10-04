@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Documentation
+*.md
+README.md
+
+# Development files
+.vscode
+.idea
+
+# Dependencies (will be installed during build)
+trak/node_modules
+trak/.svelte-kit
+trak/build
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Scripts (not needed in container)
+run.sh
+dev.sh
+reset.sh
+
+# Other project folders
+telegram/
+src/
+infra/
+*.md
+
+# Misc
+.npmrc
