@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { CapabilitiesRequestSchema, capabilityResourceGroup } from '$lib/server/db/types';
 import { getAllCategoriesAndResourceGroupNames } from '$lib/server/db';
-import z from 'zod';
+import { z } from 'zod';
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -26,17 +26,23 @@ export const POST: RequestHandler = async ({ request }) => {
         model: "openai/gpt-oss-20b:free",
         messages: [
           {
-            role: "system", content: `You are a system which, based on the capabilities 
-            requested by the user, return a list of categories which are required to fulfill
-            the given capability. You should consider the DOTMLPF doctrine, and return categories
-            that are based on doctrine, organization, training, materiel, leadership, personnel or facilities.
-            You also have access to the names of several resource groups. These are larger collections of resources that contain multiple categories.
-            Categories are ${categories.join(", ")}.
-            Resource groups are ${resource_groups.join(", ")}.
-
-            You can, in circumstances where no appropriate categories are available,
-            create new categories by adding them to new_categories in the response if they are appropriate in the context of defense. 
-            `
+            role: "system", content: `You are a system that creates resource groups based on military capabilities requested by the user. 
+            Given a capability description, you should create a resource group containing the specific resources (by category name) and quantities needed to fulfill that capability.
+            
+            Consider the DOTMLPF doctrine (Doctrine, Organization, Training, Materiel, Leadership, Personnel, Facilities) when determining resource requirements.
+            
+            Available categories: ${categories.join(", ")}.
+            Available resource groups: ${resource_groups.join(", ")}.
+            
+            Create a resource group with:
+            - A descriptive name for the capability
+            - An optional description explaining the purpose
+            - A list of items, each specifying:
+              * type: "resource" 
+              * count: number of units needed
+              * categoryName: exact name from the available categories
+            
+            Only use categories from the available list. Choose realistic quantities based on military operational requirements.`
           },
           { role: "user", content: message }
         ],
@@ -47,7 +53,7 @@ export const POST: RequestHandler = async ({ request }) => {
           json_schema: {
             name: "capability_resource_group",
             strict: true,
-            schema: z.toJSONSchema(capability)
+            schema: z.toJSONSchema(capabilityResourceGroup)
           }
         }
       })
@@ -67,9 +73,9 @@ export const POST: RequestHandler = async ({ request }) => {
       })
     }
     const capJson = JSON.parse(resBody.choices[0].message.content)
-    const data = capability.parse(capJson)
+    const data = capabilityResourceGroup.parse(capJson)
 
-    console.log(data.new_categories)
+    console.log('Successfully parsed and validated response:', data)
 
     return json({
       success: true,

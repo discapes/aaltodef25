@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { categories, locations, resources, resourceCategories, resourceGroups, resourceGroupCategries } from '../src/lib/server/db/schema';
+import { categories, locations, resources, resourceCategories, resourceGroups, resourceGroupCategories } from '../src/lib/server/db/schema';
 import { like, inArray } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
 import { env } from 'node:process';
@@ -45,7 +45,7 @@ async function seedDatabase() {
 
         // Delete resource group-category relationships for mock resource groups
         if (mockResourceGroupIds.length > 0) {
-            await db.delete(resourceGroupCategries).where(inArray(resourceGroupCategries.resourceGroupId, mockResourceGroupIds));
+            await db.delete(resourceGroupCategories).where(inArray(resourceGroupCategories.resourceGroupId, mockResourceGroupIds));
         }
 
         // Delete mock resource groups
@@ -399,7 +399,7 @@ async function seedDatabase() {
             if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: firstAidId });
         }
 
-        await db.insert(resourceGroupCategries).values(resourceGroupCategoryData);
+        await db.insert(resourceGroupCategories).values(resourceGroupCategoryData);
 
         console.log('✅ Database seeding completed successfully!');
         console.log(`📊 Inserted:`);
