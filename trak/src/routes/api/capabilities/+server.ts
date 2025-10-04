@@ -30,10 +30,12 @@ export const POST: RequestHandler = async ({ request }) => {
             requested by the user, return a list of categories which are required to fulfill
             the given capability. You should consider the DOTMLPF doctrine, and return categories
             that are based on doctrine, organization, training, materiel, leadership, personnel or facilities.
-            If there are not enough categories or some important ones are missing, simply return an empty capabilities array.
             You also have access to the names of several resource groups. These are larger collections of resources that contain multiple categories.
             Categories are ${categories.join(", ")}.
-            Resource groups are ${resource_groups.join(", ")}
+            Resource groups are ${resource_groups.join(", ")}.
+
+            You can, in circumstances where no appropriate categories are available,
+            create new categories by adding them to new_categories in the response if they are appropriate in the context of defense. 
             `
           },
           { role: "user", content: message }
@@ -66,6 +68,8 @@ export const POST: RequestHandler = async ({ request }) => {
     }
     const capJson = JSON.parse(resBody.choices[0].message.content)
     const data = capability.parse(capJson)
+
+    console.log(data.new_categories)
 
     return json({
       success: true,

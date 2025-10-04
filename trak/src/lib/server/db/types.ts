@@ -39,7 +39,8 @@ export const resourceGroup = z.object({
 
 export const capability = z.object({
     category_names: z.array(z.string()),
-    resource_group_names: z.array(z.string())
+    resource_group_names: z.array(z.string()),
+    new_categories: z.string()
 });
 
 // Capabilities API schemas
