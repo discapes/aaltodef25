@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getLocationsWithResourceGroupCounts } from '$lib/server/db';
+import { getLocationsWithOptimalResourceGroupPlacement } from '$lib/server/db';
 import { resourceGroup } from '$lib/server/db/types';
 import { z } from 'zod';
 
@@ -18,9 +18,9 @@ export const POST: RequestHandler = async ({ request }) => {
         const { resourceGroups } = requestSchema.parse(body);
         console.log('✅ Validation passed, resource groups:', resourceGroups.length);
 
-        const locations = await getLocationsWithResourceGroupCounts(resourceGroups);
+        const locations = await getLocationsWithOptimalResourceGroupPlacement(resourceGroups);
         console.log('📊 Query result:', JSON.stringify(locations, null, 2));
-        
+
         return json(locations);
     } catch (error) {
         console.error('❌ Error fetching location resource group counts:', error);

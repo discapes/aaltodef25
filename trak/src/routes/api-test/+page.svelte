@@ -12,7 +12,7 @@
           "type": "resource",
           "count": 2,
           "data": {
-            "id": 25,
+            "id": 41,
             "name": "mock_Web Development"
           }
         },
@@ -20,7 +20,7 @@
           "type": "resource",
           "count": 1,
           "data": {
-            "id": 26,
+            "id": 42,
             "name": "mock_Embedded Systems"
           }
         },
@@ -28,7 +28,7 @@
           "type": "resource",
           "count": 3,
           "data": {
-            "id": 27,
+            "id": 43,
             "name": "mock_Network Administration"
           }
         }
@@ -42,7 +42,7 @@
           "type": "resource",
           "count": 1,
           "data": {
-            "id": 28,
+            "id": 44,
             "name": "mock_Database Management"
           }
         },
@@ -50,7 +50,7 @@
           "type": "resource",
           "count": 2,
           "data": {
-            "id": 29,
+            "id": 45,
             "name": "mock_First Aid"
           }
         },
@@ -58,7 +58,7 @@
           "type": "resource",
           "count": 1,
           "data": {
-            "id": 30,
+            "id": 46,
             "name": "mock_Nursing"
           }
         }
