@@ -23,8 +23,27 @@ export const resourceCategories = pgTable('resource_categories', {
 	id: serial('id').primaryKey(),
 	resourceId: integer('resource_id').references(() => resources.id).notNull(),
 	categoryId: integer('category_id').references(() => categories.id).notNull(),
-	createdAt: timestamp('created_at').defaultNow()
+	createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const resourceGroups = pgTable("resourse_groups", {
+	id: serial("id").primaryKey(),
+	name: varchar("name", { length: 255 }).notNull(),
+	description: text('description'),
+	createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const resourceGroupCategries = pgTable("resourse_group_categories", {
+	id: serial("id").primaryKey(),
+	categoryId: integer('category_id').references(() => categories.id).notNull(),
+	resourceGroupId: integer("resource_group_id").references(() => resourceGroups.id).notNull()
+})
+
+export const resourceGroupSubgroups = pgTable("resourse_group_subgroups", {
+	id: serial("id").primaryKey(),
+	parent_group_id: integer("parent_group_id").references(() => resourceGroups.id).notNull(),
+	sub_group_id: integer("sub_group_id").references(() => resourceGroups.id).notNull()
+})
 
 export const locations = pgTable('locations', {
 	id: serial('id').primaryKey(),

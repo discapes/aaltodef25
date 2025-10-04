@@ -2,15 +2,16 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { CapabilitiesRequestSchema, capability } from '$lib/server/db/types';
-import { getAllCategories } from '$lib/server/db';
+import { getAllCategoriesAndResourceGroupNames } from '$lib/server/db';
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
     const body = await request.json();
     const { message } = CapabilitiesRequestSchema.parse(body);
 
-    const availableCategories = await getAllCategories();
-    const categoryNames = availableCategories.map(c => c.name);
+    const availableCategoriesAndGroups = await getAllCategoriesAndResourceGroupNames();
+    const categories = availableCategoriesAndGroups.filter(c => c.type == "category").map(c => c.name)
+    const resource_groups = availableCategoriesAndGroups.filter(c => c.type == "resource_group").map(c => c.name)
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -29,7 +30,8 @@ export const POST: RequestHandler = async ({ request }) => {
             the given capability. You should consider the DOTMLPF doctrine, and return categories
             that are based on doctrine, organization, training, materiel, leadership, personnel or facilities.
             If there are not enough categories or some important ones are missing, simply return an empty capabilities array.
-            Categories are ${categoryNames.join(", ")}.
+            Categories are ${categories.join(", ")}.
+            Resource groups are ${resource_groups.join(", ")}
             `
           },
           { role: "user", content: message }
@@ -74,7 +76,6 @@ export const POST: RequestHandler = async ({ request }) => {
     }
     const capJson = JSON.parse(resBody.choices[0].message.content)
     const data = capability.parse(capJson)
-    console.log(capJson)
 
     return json({
       success: true,

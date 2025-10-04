@@ -1,9 +1,11 @@
 import 'dotenv/config';
-import { drizzle } from 'drizzle-orm/neon-http';
-import { neon } from '@neondatabase/serverless';
-import { categories, locations, resources, resourceCategories } from '../src/lib/server/db/schema';
+import pg from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { categories, locations, resources, resourceCategories, resourceGroups, resourceGroupCategries } from '../src/lib/server/db/schema';
 import { like, inArray } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
+import { env } from 'node:process';
+
 
 // Get the database URL from environment
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -11,9 +13,11 @@ if (!DATABASE_URL) {
     throw new Error('DATABASE_URL environment variable is not set');
 }
 
-// Create database connection directly
-const client = neon(DATABASE_URL);
-const db = drizzle(client, { schema });
+const pool = new pg.Pool({
+	connectionString: env.DATABASE_URL
+});
+
+export const db = drizzle(pool, { schema });
 
 async function seedDatabase() {
     console.log('🌱 Starting database seeding...');
@@ -33,6 +37,18 @@ async function seedDatabase() {
 
         // Delete mock resources
         await db.delete(resources).where(like(resources.name, 'mock_%'));
+
+        // Delete mock resource groups and their relationships
+        const mockResourceGroups = await db.select().from(resourceGroups).where(like(resourceGroups.name, 'mock_%'));
+        const mockResourceGroupIds = mockResourceGroups.map(rg => rg.id);
+
+        // Delete resource group-category relationships for mock resource groups
+        if (mockResourceGroupIds.length > 0) {
+            await db.delete(resourceGroupCategries).where(inArray(resourceGroupCategries.resourceGroupId, mockResourceGroupIds));
+        }
+
+        // Delete mock resource groups
+        await db.delete(resourceGroups).where(like(resourceGroups.name, 'mock_%'));
 
         // Delete mock categories and locations
         await db.delete(categories).where(like(categories.name, 'mock_%'));
@@ -241,12 +257,157 @@ async function seedDatabase() {
 
         await db.insert(resourceCategories).values(resourceCategoryData);
 
+        // Insert resource groups
+        console.log('🏢 Inserting resource groups...');
+        const insertedResourceGroups = await db.insert(resourceGroups).values([
+            { name: 'mock_Medical Emergency Response Unit', description: 'Complete medical emergency response capability including personnel and equipment' },
+            { name: 'mock_Firefighting Force', description: 'Fire suppression and rescue operations team with equipment' },
+            { name: 'mock_IT Support Center', description: 'Technical support and infrastructure maintenance team' },
+            { name: 'mock_Field Hospital', description: 'Mobile medical facility with surgical capabilities' },
+            { name: 'mock_Emergency Communications Hub', description: 'Communication coordination center with radio equipment' },
+            { name: 'mock_Construction and Repair Team', description: 'Infrastructure repair and construction capabilities' },
+            { name: 'mock_Emergency Supply Distribution', description: 'Food, water, and essential supplies distribution network' },
+            { name: 'mock_Search and Rescue Team', description: 'Personnel search, rescue, and recovery operations' },
+            { name: 'mock_Database and Information Systems', description: 'Data management and information systems support' },
+            { name: 'mock_Mobile Command Center', description: 'Coordination and command capabilities for emergency response' }
+        ]).returning();
+
+        // Create resource group - category relationships
+        console.log('🔗 Creating resource group-category relationships...');
+        const resourceGroupCategoryData: { resourceGroupId: number; categoryId: number }[] = [];
+
+        // Medical Emergency Response Unit
+        const medicalUnitId = insertedResourceGroups.find(rg => rg.name === 'mock_Medical Emergency Response Unit')?.id;
+        if (medicalUnitId) {
+            const firstAidId = findCategory('mock_First Aid');
+            const nursingId = findCategory('mock_Nursing');
+            const emergencyMedId = findCategory('mock_Emergency Medicine');
+            const medicalSuppliesId = findCategory('mock_Medical Supplies');
+            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: firstAidId });
+            if (nursingId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: nursingId });
+            if (emergencyMedId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: emergencyMedId });
+            if (medicalSuppliesId) resourceGroupCategoryData.push({ resourceGroupId: medicalUnitId, categoryId: medicalSuppliesId });
+        }
+
+        // Firefighting Force
+        const firefightingId = insertedResourceGroups.find(rg => rg.name === 'mock_Firefighting Force')?.id;
+        if (firefightingId) {
+            const chainsawId = findCategory('mock_Chainsaw');
+            const wrenchSetId = findCategory('mock_Wrench Set');
+            const firstAidId = findCategory('mock_First Aid');
+            const fuelId = findCategory('mock_Fuel (1L)');
+            if (chainsawId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: chainsawId });
+            if (wrenchSetId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: wrenchSetId });
+            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: firstAidId });
+            if (fuelId) resourceGroupCategoryData.push({ resourceGroupId: firefightingId, categoryId: fuelId });
+        }
+
+        // IT Support Center
+        const itSupportId = insertedResourceGroups.find(rg => rg.name === 'mock_IT Support Center')?.id;
+        if (itSupportId) {
+            const webDevId = findCategory('mock_Web Development');
+            const networkAdminId = findCategory('mock_Network Administration');
+            const dbMgmtId = findCategory('mock_Database Management');
+            const embeddedId = findCategory('mock_Embedded Systems');
+            if (webDevId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: webDevId });
+            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: networkAdminId });
+            if (dbMgmtId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: dbMgmtId });
+            if (embeddedId) resourceGroupCategoryData.push({ resourceGroupId: itSupportId, categoryId: embeddedId });
+        }
+
+        // Field Hospital
+        const fieldHospitalId = insertedResourceGroups.find(rg => rg.name === 'mock_Field Hospital')?.id;
+        if (fieldHospitalId) {
+            const surgeryId = findCategory('mock_Surgery');
+            const nursingId = findCategory('mock_Nursing');
+            const emergencyMedId = findCategory('mock_Emergency Medicine');
+            const medicalSuppliesId = findCategory('mock_Medical Supplies');
+            if (surgeryId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: surgeryId });
+            if (nursingId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: nursingId });
+            if (emergencyMedId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: emergencyMedId });
+            if (medicalSuppliesId) resourceGroupCategoryData.push({ resourceGroupId: fieldHospitalId, categoryId: medicalSuppliesId });
+        }
+
+        // Emergency Communications Hub
+        const commHubId = insertedResourceGroups.find(rg => rg.name === 'mock_Emergency Communications Hub')?.id;
+        if (commHubId) {
+            const commRadioId = findCategory('mock_Communication Radio');
+            const networkAdminId = findCategory('mock_Network Administration');
+            const embeddedId = findCategory('mock_Embedded Systems');
+            if (commRadioId) resourceGroupCategoryData.push({ resourceGroupId: commHubId, categoryId: commRadioId });
+            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: commHubId, categoryId: networkAdminId });
+            if (embeddedId) resourceGroupCategoryData.push({ resourceGroupId: commHubId, categoryId: embeddedId });
+        }
+
+        // Construction and Repair Team
+        const constructionId = insertedResourceGroups.find(rg => rg.name === 'mock_Construction and Repair Team')?.id;
+        if (constructionId) {
+            const hammerId = findCategory('mock_Hammer');
+            const shovelId = findCategory('mock_Shovel');
+            const wrenchSetId = findCategory('mock_Wrench Set');
+            const chainsawId = findCategory('mock_Chainsaw');
+            if (hammerId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: hammerId });
+            if (shovelId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: shovelId });
+            if (wrenchSetId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: wrenchSetId });
+            if (chainsawId) resourceGroupCategoryData.push({ resourceGroupId: constructionId, categoryId: chainsawId });
+        }
+
+        // Emergency Supply Distribution
+        const supplyDistId = insertedResourceGroups.find(rg => rg.name === 'mock_Emergency Supply Distribution')?.id;
+        if (supplyDistId) {
+            const foodRationsId = findCategory('mock_Food Rations');
+            const waterSupplyId = findCategory('mock_Water Supply');
+            const fuelId = findCategory('mock_Fuel (1L)');
+            if (foodRationsId) resourceGroupCategoryData.push({ resourceGroupId: supplyDistId, categoryId: foodRationsId });
+            if (waterSupplyId) resourceGroupCategoryData.push({ resourceGroupId: supplyDistId, categoryId: waterSupplyId });
+            if (fuelId) resourceGroupCategoryData.push({ resourceGroupId: supplyDistId, categoryId: fuelId });
+        }
+
+        // Search and Rescue Team
+        const sarId = insertedResourceGroups.find(rg => rg.name === 'mock_Search and Rescue Team')?.id;
+        if (sarId) {
+            const firstAidId = findCategory('mock_First Aid');
+            const emergencyMedId = findCategory('mock_Emergency Medicine');
+            const commRadioId = findCategory('mock_Communication Radio');
+            const chainsawId = findCategory('mock_Chainsaw');
+            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: firstAidId });
+            if (emergencyMedId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: emergencyMedId });
+            if (commRadioId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: commRadioId });
+            if (chainsawId) resourceGroupCategoryData.push({ resourceGroupId: sarId, categoryId: chainsawId });
+        }
+
+        // Database and Information Systems
+        const dbSystemsId = insertedResourceGroups.find(rg => rg.name === 'mock_Database and Information Systems')?.id;
+        if (dbSystemsId) {
+            const dbMgmtId = findCategory('mock_Database Management');
+            const webDevId = findCategory('mock_Web Development');
+            const networkAdminId = findCategory('mock_Network Administration');
+            if (dbMgmtId) resourceGroupCategoryData.push({ resourceGroupId: dbSystemsId, categoryId: dbMgmtId });
+            if (webDevId) resourceGroupCategoryData.push({ resourceGroupId: dbSystemsId, categoryId: webDevId });
+            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: dbSystemsId, categoryId: networkAdminId });
+        }
+
+        // Mobile Command Center
+        const commandCenterId = insertedResourceGroups.find(rg => rg.name === 'mock_Mobile Command Center')?.id;
+        if (commandCenterId) {
+            const commRadioId = findCategory('mock_Communication Radio');
+            const networkAdminId = findCategory('mock_Network Administration');
+            const firstAidId = findCategory('mock_First Aid');
+            if (commRadioId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: commRadioId });
+            if (networkAdminId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: networkAdminId });
+            if (firstAidId) resourceGroupCategoryData.push({ resourceGroupId: commandCenterId, categoryId: firstAidId });
+        }
+
+        await db.insert(resourceGroupCategries).values(resourceGroupCategoryData);
+
         console.log('✅ Database seeding completed successfully!');
         console.log(`📊 Inserted:`);
         console.log(`   - ${insertedCategories.length} categories`);
         console.log(`   - ${insertedLocations.length} locations`);
         console.log(`   - ${insertedResources.length} resources`);
         console.log(`   - ${resourceCategoryData.length} resource-category relationships`);
+        console.log(`   - ${insertedResourceGroups.length} resource groups`);
+        console.log(`   - ${resourceGroupCategoryData.length} resource group-category relationships`);
 
     } catch (error) {
         console.error('❌ Error seeding database:', error);

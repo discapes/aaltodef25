@@ -1,12 +1,21 @@
 import { db } from './index';
-import { categories, resources, resourceCategories } from './schema';
-import { eq, inArray } from 'drizzle-orm';
+import { categories, resources, resourceCategories, resourceGroups } from './schema';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 export async function getAllCategories() {
     return db
         .select()
         .from(categories)
         .execute();
+}
+
+export async function getAllCategoriesAndResourceGroupNames() {
+    return db.select({ name: categories.name, type: sql<string>`'category'`.as("type") })
+        .from(categories)
+        .union(
+            db.select({ name: resourceGroups.name, type: sql<string>`'resource_group'`.as("type") })
+                .from(resourceGroups)
+        )
 }
 
 export async function getAllResources() {
@@ -34,7 +43,7 @@ export async function getResourcesByCategories(categoryIds: number[] = []) {
         // If no categories specified, return all resources
         return getAllResources();
     }
-    
+
     return db
         .select({
             id: resources.id,
