@@ -1,5 +1,7 @@
 # Entry for Aalto Defense hackathon
 
+TRAK is a comprehensive system for tracking civilian resources and analyzing the capabilities those resources can provide.
+
 ## Development Scripts
 
 ### `./run.sh`
