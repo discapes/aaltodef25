@@ -2,7 +2,7 @@ import 'dotenv/config';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { categories, locations, resources, resourceCategories, resourceGroups, resourceGroupCategories } from '../src/lib/server/db/schema';
-import { like, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import * as schema from '../src/lib/server/db/schema';
 
 // Get the database URL from environment

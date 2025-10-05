@@ -1,5 +1,5 @@
 import { db } from './index';
-import { categories, resources, resourceCategories, resourceGroups, resourceGroupCategories, resourceGroupSubgroups } from './schema';
+import { categories, resources, resourceCategories, resourceGroups, resourceGroupCategories, resourceGroupSubgroups, locations } from './schema';
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { NewResource, CreateResourceGroup } from './types';
 
@@ -98,16 +98,19 @@ export async function getAllResourceGroups() {
     ];
 }
 
-export async function addNewResource(newResourceData: NewResource, locationId: number, latitude: number, longitude: number) {
+export async function addNewResource(newResourceData: NewResource, latitude: number, longitude: number) {
     // Start a transaction to ensure data consistency
     return await db.transaction(async (tx) => {
+
+        const locationss = await tx.select().from(locations).limit(1).execute()
+        
         // Insert the resource
         const [insertedResource] = await tx
             .insert(resources)
             .values({
                 name: newResourceData.name,
-                locationId,
                 latitude,
+                locationId: locationss[0].id,
                 longitude,
             })
             .returning({

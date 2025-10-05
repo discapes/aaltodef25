@@ -80,7 +80,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const lat = Math.random() * 0.05 + 60.15
     const lon = Math.random() * 0.05 + 24.9
 
-    await addNewResource(data, 123, lat,lon)
+    await addNewResource(data, lat,lon)
 
     return json({
       success: true,
