@@ -89,13 +89,108 @@ export async function getResourcesByCategories(categoryIds: number[] = []) {
 }
 
 export async function getAllResourceGroups() {
-    // TODO: Implement when resource groups table is created
-    // For now, return mock data for development
-    return [
-        { id: 1, name: 'Emergency Response Kit', description: 'Standard emergency response equipment' },
-        { id: 2, name: 'Medical Supplies', description: 'Basic medical equipment and supplies' },
-        { id: 3, name: 'Communication Equipment', description: 'Radios, phones, and communication gear' }
-    ];
+    try {
+        return await db
+            .select({
+                id: resourceGroups.id,
+                name: resourceGroups.name,
+                description: resourceGroups.description
+            })
+            .from(resourceGroups)
+            .orderBy(resourceGroups.name)
+            .execute();
+    } catch (error) {
+        console.error('Error fetching resource groups:', error);
+        // Return empty array instead of mock data if there's an error
+        return [];
+    }
+}
+
+export async function getResourceGroupById(id: number): Promise<CreateResourceGroup | null> {
+    try {
+        // Get the main resource group
+        const [group] = await db
+            .select()
+            .from(resourceGroups)
+            .where(eq(resourceGroups.id, id))
+            .execute();
+
+        if (!group) return null;
+
+        // Get categories for this resource group
+        const groupCategories = await db
+            .select({
+                categoryId: resourceGroupCategories.categoryId,
+                categoryName: categories.name,
+                categoryDescription: categories.description
+            })
+            .from(resourceGroupCategories)
+            .innerJoin(categories, eq(resourceGroupCategories.categoryId, categories.id))
+            .where(eq(resourceGroupCategories.resourceGroupId, id))
+            .execute();
+
+        // Get subgroups for this resource group
+        const subGroups = await db
+            .select({
+                subGroupId: resourceGroupSubgroups.sub_group_id,
+                subGroupName: resourceGroups.name,
+                subGroupDescription: resourceGroups.description
+            })
+            .from(resourceGroupSubgroups)
+            .innerJoin(resourceGroups, eq(resourceGroupSubgroups.sub_group_id, resourceGroups.id))
+            .where(eq(resourceGroupSubgroups.parent_group_id, id))
+            .execute();
+
+        // Build the items array
+        const items: CreateResourceGroup['items'] = [];
+
+        // Add resource items
+        for (const category of groupCategories) {
+            items.push({
+                type: 'resource',
+                count: 1, // Default count, could be stored in a separate table if needed
+                data: {
+                    id: category.categoryId,
+                    name: category.categoryName,
+                    description: category.categoryDescription
+                }
+            });
+        }
+
+        // Add existing group items (count occurrences of each subgroup)
+        const subGroupCounts = new Map<number, { count: number; data: any }>();
+        for (const subGroup of subGroups) {
+            if (subGroupCounts.has(subGroup.subGroupId)) {
+                subGroupCounts.get(subGroup.subGroupId)!.count++;
+            } else {
+                subGroupCounts.set(subGroup.subGroupId, {
+                    count: 1,
+                    data: {
+                        id: subGroup.subGroupId,
+                        name: subGroup.subGroupName,
+                        description: subGroup.subGroupDescription
+                    }
+                });
+            }
+        }
+
+        for (const [_, { count, data }] of subGroupCounts) {
+            items.push({
+                type: 'existing-group',
+                count,
+                data
+            });
+        }
+
+        return {
+            name: group.name,
+            description: group.description || '',
+            items
+        };
+    } catch (error) {
+        console.error('Error fetching resource group:', error);
+        return null;
+    }
 }
 
 export async function addNewResource(newResourceData: NewResource, latitude: number, longitude: number) {
@@ -154,14 +249,14 @@ export async function addNewResource(newResourceData: NewResource, latitude: num
 
 export async function createResourceGroup(resourceGroupData: CreateResourceGroup): Promise<{ id: number; name: string; description: string | null }> {
     return await db.transaction(async (tx) => {
-        
+
         async function createResourceGroupRecursive(data: CreateResourceGroup): Promise<{ id: number; name: string; description: string | null }> {
             // Insert the main resource group
             const [insertedGroup] = await tx.insert(resourceGroups).values({
                 name: data.name,
                 description: data.description || null,
-            }).returning({ 
-                id: resourceGroups.id, 
+            }).returning({
+                id: resourceGroups.id,
                 name: resourceGroups.name,
                 description: resourceGroups.description
             });

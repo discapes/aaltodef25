@@ -260,6 +260,37 @@
 		return Object.values(grouped);
 	}
 
+	// Calculate how many complete resource groups can be formed
+	function calculateCompleteGroups(sources: any[], resourceGroupItems: any[]) {
+		if (!sources || !resourceGroupItems || resourceGroupItems.length === 0) return 0;
+
+		const groupedSources = groupSources(sources);
+		
+		// Create a map of available resources by category name
+		const availableByCategory: Record<string, number> = {};
+		groupedSources.forEach((source: any) => {
+			availableByCategory[source.categoryName] = source.unitsTransferred;
+		});
+
+		// Calculate how many groups can be formed for each required resource type
+		const possibleGroups: number[] = [];
+		
+		resourceGroupItems.forEach((item: any) => {
+			if (item.type === 'resource') {
+				const categoryName = item.data.name;
+				const required = item.count;
+				const available = availableByCategory[categoryName] || 0;
+				
+				if (required > 0) {
+					possibleGroups.push(Math.floor(available / required));
+				}
+			}
+		});
+
+		// The bottleneck (minimum) determines how many complete groups can be formed
+		return possibleGroups.length > 0 ? Math.min(...possibleGroups) : 0;
+	}
+
 	// Helper function to get bottleneck color for a category
 	function getBottleneckColor(categoryName: string): string | null {
 		const bottleneck = bottlenecks.find((b) => b.categoryName === categoryName);
@@ -362,11 +393,44 @@
 		}
 	}
 
+	// Transform items to match API schema (convert 'existing-group' to 'group')
+	function transformResourceGroupItems(items: any[]): any[] {
+		return items.map(item => {
+			if (item.type === 'existing-group') {
+				// Convert existing-group to group format
+				return {
+					type: 'group',
+					count: item.count,
+					data: {
+						id: item.data.id,
+						name: item.data.name,
+						items: item.data.items ? transformResourceGroupItems(item.data.items) : []
+					}
+				};
+			} else if (item.type === 'group') {
+				// Recursively transform nested groups
+				return {
+					...item,
+					data: {
+						...item.data,
+						items: item.data.items ? transformResourceGroupItems(item.data.items) : []
+					}
+				};
+			} else {
+				// 'resource' type - pass through unchanged
+				return item;
+			}
+		});
+	}
+
 	async function analyzeLocationCapabilities() {
 		if (!resourceGroup.items.length) return;
 
 		analysisLoading = true;
 		try {
+			// Transform resourceGroup.items to match the API schema
+			const transformedItems = transformResourceGroupItems(resourceGroup.items);
+
 			const response = await fetch('/api/location-resource-group-counts', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -375,7 +439,7 @@
 						{
 							id: 0, // Temporary ID for analysis
 							name: resourceGroup.name,
-							items: resourceGroup.items
+							items: transformedItems
 						}
 					]
 				})
@@ -878,10 +942,18 @@
 																	.map((s: any) => s.transportationTimeHours),
 																0
 															)}
-															<div class="font-medium text-green-600">{localUnits} available</div>
+															{@const completeGroupsLocal = calculateCompleteGroups(
+																groupedSources.filter((s: any) => s.transportationTimeHours === 0),
+																resourceGroup.items
+															)}
+															{@const completeGroupsTotal = calculateCompleteGroups(
+																groupedSources,
+																resourceGroup.items
+															)}
+															<div class="font-medium text-green-600">{completeGroupsLocal} groups available</div>
 															{#if transferredUnits > 0}
 																<div class="font-medium text-blue-600">
-																	{localUnits + transferredUnits} in {maxTransportTime}h
+																	{completeGroupsTotal} groups in {maxTransportTime}h
 																</div>
 															{/if}
 															{#if rg.time_to_realize}
@@ -890,7 +962,8 @@
 																</div>
 															{/if}
 														{:else}
-															<div class="font-medium text-green-600">{rg.count} available</div>
+															{@const completeGroups = Math.floor(rg.count)}
+															<div class="font-medium text-green-600">{completeGroups} groups available</div>
 															{#if rg.time_to_realize}
 																<div class="font-medium text-blue-600">
 																	{rg.count} in {rg.time_to_realize} h

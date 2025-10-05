@@ -7,26 +7,37 @@
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import type { Category } from '$lib/server/db/types';
 
-	export let items: Array<{
-		type: 'resource' | 'group' | 'existing-group';
-		count: number;
-		data: Category | any;
-	}> = [];
-
-	export let availableCategories: Category[];
-	export let existingResourceGroups: Array<{
-		id: number;
-		name: string;
-		description?: string;
-	}> = [];
+	let {
+		items = $bindable([]),
+		availableCategories,
+		existingResourceGroups = []
+	}: {
+		items: Array<{
+			type: 'resource' | 'group' | 'existing-group';
+			count: number;
+			data: Category | any;
+		}>;
+		availableCategories: Category[];
+		existingResourceGroups: Array<{
+			id: number;
+			name: string;
+			description?: string;
+		}>;
+	} = $props();
 
 	function addResourceItem() {
+		// Ensure we have a valid category with proper id
+		const defaultCategory =
+			availableCategories.length > 0
+				? availableCategories[0]
+				: { id: -1, name: 'No categories available', description: null };
+
 		items = [
 			...items,
 			{
 				type: 'resource',
 				count: 1,
-				data: availableCategories[0] || { id: 0, name: '', description: null }
+				data: defaultCategory
 			}
 		];
 	}
@@ -38,6 +49,7 @@
 				type: 'group',
 				count: 0,
 				data: {
+					id: -1, // Temporary ID for new groups
 					name: '',
 					description: '',
 					items: []
@@ -48,21 +60,42 @@
 
 	function addExistingGroupItem() {
 		const newIndex = items.length;
+		// Ensure we have a valid existing group with proper id
+		const defaultGroup =
+			existingResourceGroups.length > 0
+				? existingResourceGroups[0]
+				: { id: -1, name: 'No groups available', description: '' };
+
 		items = [
 			...items,
 			{
 				type: 'existing-group',
-				count: 0,
-				data: existingResourceGroups[0] || { id: 0, name: '', description: '' }
+				count: 1,
+				data: defaultGroup
 			}
 		];
-		// Initialize autocomplete state for the new item
+		// Initialize autocomplete state for the new item with empty string
 		autocompleteInputs[newIndex] = '';
 		filteredGroups[newIndex] = [];
 	}
 
 	function removeItem(index: number) {
 		items = items.filter((_, i) => i !== index);
+		// Clean up autocomplete state for removed item and reindex remaining items
+		const newAutocompleteInputs: { [key: number]: string } = {};
+		const newFilteredGroups: { [key: number]: typeof existingResourceGroups } = {};
+
+		let newIndex = 0;
+		for (let i = 0; i < items.length + 1; i++) {
+			if (i !== index && autocompleteInputs[i] !== undefined) {
+				newAutocompleteInputs[newIndex] = autocompleteInputs[i];
+				newFilteredGroups[newIndex] = filteredGroups[i] || [];
+				newIndex++;
+			}
+		}
+
+		autocompleteInputs = newAutocompleteInputs;
+		filteredGroups = newFilteredGroups;
 	}
 
 	function updateResourceCategory(index: number, categoryId: string) {
@@ -81,9 +114,9 @@
 		}
 	}
 
-	// Autocomplete functionality
-	let autocompleteInputs: { [key: number]: string } = {};
-	let filteredGroups: { [key: number]: typeof existingResourceGroups } = {};
+	// Autocomplete functionality - using $state() for proper reactivity
+	let autocompleteInputs = $state<{ [key: number]: string }>({});
+	let filteredGroups = $state<{ [key: number]: typeof existingResourceGroups }>({});
 
 	function filterGroups(index: number, searchTerm: string) {
 		autocompleteInputs[index] = searchTerm;
@@ -99,13 +132,51 @@
 	}
 
 	function selectGroup(index: number, group: (typeof existingResourceGroups)[0]) {
-		// Create a new array to trigger reactivity
-		items = items.map((item, i) => (i === index ? { ...item, data: group } : item));
+		// Update input value first to prevent reset
 		autocompleteInputs[index] = group.name;
 		filteredGroups[index] = [];
+
+		// Create a new array to trigger reactivity and set the selected group
+		items = items.map((item, i) => (i === index ? { ...item, data: group } : item));
+
+		// Fetch the complete resource group data for display purposes
+		fetchAndPopulateResourceGroup(group.id, index);
 	}
 
-	function closeAutocomplete(index: number) {
+	async function fetchAndPopulateResourceGroup(groupId: number, itemIndex: number) {
+		try {
+			const response = await fetch(`/api/resource-groups/${groupId}`);
+			if (response.ok) {
+				const completeGroup = await response.json();
+
+				// Update the item with the complete resource group structure for display
+				const currentInputValue = autocompleteInputs[itemIndex];
+				
+				items = items.map((item, i) => {
+					if (i === itemIndex && item.type === 'existing-group') {
+						return {
+							...item,
+							data: {
+								...item.data,
+								items: completeGroup.items, // Add the items from the database for display
+								completeStructure: completeGroup // Store complete structure for reference
+							}
+						};
+					}
+					return item;
+				});
+
+				// Ensure the input value is preserved
+				if (currentInputValue !== undefined) {
+					autocompleteInputs[itemIndex] = currentInputValue;
+				}
+			} else {
+				console.error('Failed to fetch resource group details');
+			}
+		} catch (error) {
+			console.error('Error fetching resource group:', error);
+		}
+	}	function closeAutocomplete(index: number) {
 		// Small delay to allow click events to fire first
 		setTimeout(() => {
 			filteredGroups[index] = [];
@@ -176,7 +247,7 @@
 								</div>
 							</div>
 						{:else if item.type === 'existing-group'}
-							<!-- Existing Group -->
+							<!-- Existing Group Selection (before conversion) -->
 							<div class="grid grid-cols-2 gap-3">
 								<div class="relative space-y-1">
 									<Label class="text-xs font-medium">Existing Resource Group</Label>
@@ -231,10 +302,37 @@
 									{#if item.data.description}
 										<div class="text-xs text-gray-500">{item.data.description}</div>
 									{/if}
+
+									<!-- Show the resource group contents if available -->
+									{#if item.data.items && item.data.items.length > 0}
+										<div class="mt-2 border-t border-gray-200 pt-2">
+											<div class="mb-1 text-xs font-medium text-gray-700">
+												Contents ({item.data.items.length} items):
+											</div>
+											<div class="space-y-1">
+												{#each item.data.items as subItem}
+													<div class="flex justify-between text-xs text-gray-600">
+														<span>
+															{#if subItem.type === 'resource'}
+																📦 {subItem.data.name}
+															{:else if subItem.type === 'existing-group'}
+																🗂️ {subItem.data.name}
+															{:else}
+																📋 {subItem.data.name}
+															{/if}
+														</span>
+														{#if subItem.count > 1}
+															<span class="font-medium">×{subItem.count}</span>
+														{/if}
+													</div>
+												{/each}
+											</div>
+										</div>
+									{/if}
 								</div>
 							{/if}
 						{:else}
-							<!-- Sub-group -->
+							<!-- Sub-group (including converted existing groups) -->
 							<div class="space-y-3">
 								<div class="grid grid-cols-2 gap-3">
 									<div class="space-y-1">
