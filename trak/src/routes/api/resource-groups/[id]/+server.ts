@@ -3,7 +3,7 @@ import { getResourceGroupById } from '$lib/server/db/basicQueries';
 import type { RequestEvent } from '@sveltejs/kit';
 
 export const GET = async ({ params }: RequestEvent) => {
-    const id = parseInt(params.id);
+    const id = parseInt(params.id ?? "0");
 
     if (isNaN(id)) {
         return json({ error: 'Invalid resource group ID' }, { status: 400 });
