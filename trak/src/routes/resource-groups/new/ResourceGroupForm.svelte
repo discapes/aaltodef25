@@ -151,7 +151,7 @@
 
 				// Update the item with the complete resource group structure for display
 				const currentInputValue = autocompleteInputs[itemIndex];
-				
+
 				items = items.map((item, i) => {
 					if (i === itemIndex && item.type === 'existing-group') {
 						return {
@@ -176,7 +176,8 @@
 		} catch (error) {
 			console.error('Error fetching resource group:', error);
 		}
-	}	function closeAutocomplete(index: number) {
+	}
+	function closeAutocomplete(index: number) {
 		// Small delay to allow click events to fire first
 		setTimeout(() => {
 			filteredGroups[index] = [];

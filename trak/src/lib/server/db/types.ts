@@ -43,13 +43,22 @@ export const resourceGroup = z.object({
 export const capabilityResourceGroup = z.object({
     name: z.string(),
     description: z.string().optional(),
-    items: z.array(z.object({
-        type: z.literal('resource'),
-        count: z.number().int().min(0),
-        categoryName: z.string(), // Category name instead of full category object
-        hours_needed: z.number().optional(), // Hours of operation/usage
-        hours_to_realize: z.number().optional(), // Hours to deploy/setup
-    }))
+    items: z.array(z.union([
+        z.object({
+            type: z.literal('resource'),
+            count: z.number().int().min(0),
+            categoryName: z.string(), // Category name instead of full category object
+            hours_needed: z.number().optional(), // Hours of operation/usage
+            hours_to_realize: z.number().optional(), // Hours to deploy/setup
+        }),
+        z.object({
+            type: z.literal('existing-group'),
+            count: z.number().int().min(0),
+            resourceGroupName: z.string(), // Name of existing resource group
+            hours_needed: z.number().optional(), // Hours of operation/usage
+            hours_to_realize: z.number().optional(), // Hours to deploy/setup
+        })
+    ]))
 });
 
 export const telegramMessage = z.object({
