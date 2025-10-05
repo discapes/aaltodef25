@@ -19,7 +19,7 @@
 	export let data: PageData;
 
 	// Constants
-	const MAP_CENTER: [number, number] = [60.1699, 24.9384];
+	const MAP_CENTER = [60.1699, 24.9384] as const;
 	const MAP_ZOOM = 13;
 	const CATEGORY_COLORS = [
 		'#ef4444',
@@ -260,31 +260,12 @@
 		return Object.values(grouped);
 	}
 
-	// Helper function to extract all category names from resource group items
-	function extractAllCategoryNames(items: any[]): string[] {
-		const categoryNames: string[] = [];
-		
-		items.forEach((item) => {
-			if (item.type === 'resource' && item.data?.name) {
-				categoryNames.push(item.data.name);
-			} else if (item.type === 'existing-group' && item.data?.items) {
-				// Recursively extract category names from existing group items
-				categoryNames.push(...extractAllCategoryNames(item.data.items));
-			} else if (item.type === 'group' && item.data?.items) {
-				// Recursively extract category names from sub-group items
-				categoryNames.push(...extractAllCategoryNames(item.data.items));
-			}
-		});
-		
-		return [...new Set(categoryNames)]; // Remove duplicates
-	}
-
 	// Calculate how many complete resource groups can be formed
 	function calculateCompleteGroups(sources: any[], resourceGroupItems: any[]) {
 		if (!sources || !resourceGroupItems || resourceGroupItems.length === 0) return 0;
 
 		const groupedSources = groupSources(sources);
-
+		
 		// Create a map of available resources by category name
 		const availableByCategory: Record<string, number> = {};
 		groupedSources.forEach((source: any) => {
@@ -293,13 +274,13 @@
 
 		// Calculate how many groups can be formed for each required resource type
 		const possibleGroups: number[] = [];
-
+		
 		resourceGroupItems.forEach((item: any) => {
 			if (item.type === 'resource') {
 				const categoryName = item.data.name;
 				const required = item.count;
 				const available = availableByCategory[categoryName] || 0;
-
+				
 				if (required > 0) {
 					possibleGroups.push(Math.floor(available / required));
 				}
@@ -318,10 +299,7 @@
 
 	// Resource group state
 	const availableCategories: Category[] = data.categories;
-	let existingResourceGroups = data.existingResourceGroups.map((group) => ({
-		...group,
-		description: group.description ?? undefined
-	}));
+	const existingResourceGroups = data.existingResourceGroups;
 	let resourceGroup: CreateResourceGroup = {
 		name: '',
 		description: '',
@@ -380,10 +358,12 @@
 
 	// API functions
 	async function updateRelevantResources() {
-		// Get all category names from resource group items (including nested existing groups)
-		const categoryNames = extractAllCategoryNames(resourceGroup.items);
-		const categoryIds = getCategoryIdsByNames(categoryNames);
-		
+		// Get category IDs from current resource group items
+		const categoryIds = resourceGroup.items
+			.filter((item) => item.type === 'resource')
+			.map((item) => item.data.id)
+			.filter((id) => id !== undefined);
+
 		relevantCategoryIds = categoryIds;
 		await loadRelevantResources();
 	}
@@ -415,7 +395,7 @@
 
 	// Transform items to match API schema (convert 'existing-group' to 'group')
 	function transformResourceGroupItems(items: any[]): any[] {
-		return items.map((item) => {
+		return items.map(item => {
 			if (item.type === 'existing-group') {
 				// Convert existing-group to group format
 				return {
@@ -527,22 +507,9 @@
 
 				// Load relevant resources based on AI response
 				if (response?.items?.length > 0) {
-					const categoryNames: string[] = [];
-					
-					// Extract category names from all item types
-					for (const item of response.items) {
-						if (item.type === 'resource' && item.categoryName) {
-							categoryNames.push(item.categoryName);
-						} else if (item.type === 'existing-group' && item.resourceGroupName) {
-							// For existing groups, we'll need to get the categories after the resource group is populated
-							// This will be handled by the reactive statement that calls populateResourceGroupFromResponse
-						}
-					}
-					
-					if (categoryNames.length > 0) {
-						relevantCategoryIds = getCategoryIdsByNames(categoryNames);
-						await loadRelevantResources();
-					}
+					const categoryNames = response.items.map((item) => item.categoryName);
+					relevantCategoryIds = getCategoryIdsByNames(categoryNames);
+					await loadRelevantResources();
 				}
 			} else {
 				const errorResult = data as CapabilitiesError;
@@ -588,8 +555,7 @@
 			});
 
 			if (response.ok) {
-				const result = await response.json();
-				const newGroup = result.data; // Extract the data from the API response
+				const newGroup = await response.json();
 
 				// Reset form on success
 				resourceGroup = { name: '', description: '', items: [] };
@@ -602,23 +568,10 @@
 					resourceGroupError = '';
 				}, 3000);
 
-				// Refresh the existing resource groups list
-				try {
-					const groupsResponse = await fetch('/api/resource-groups');
-					if (groupsResponse.ok) {
-						const freshGroups = await groupsResponse.json();
-						// Update the existing resource groups list with the fresh data
-						existingResourceGroups = freshGroups.map((group: any) => ({
-							...group,
-							description: group.description ?? undefined
-						}));
-					}
-				} catch (error) {
-					console.error('Failed to refresh resource groups list:', error);
-				}
-
 				// Load relevant resources for the manually created resource group
-				await updateRelevantResources(); // Optionally reload the page to get fresh data including new resource groups list
+				await updateRelevantResources();
+
+				// Optionally reload the page to get fresh data including new resource groups list
 				// window.location.reload();
 			} else {
 				const errorText = await response.text();
@@ -631,64 +584,19 @@
 		}
 	}
 
-	async function populateResourceGroupFromResponse() {
+	function populateResourceGroupFromResponse() {
 		if (!response) return;
 
 		resourceGroup.name = response.name;
 		resourceGroup.description = response.description || '';
-		
-		const populatedItems = [];
-		
-		for (const item of response.items) {
-			if (item.type === 'resource') {
-				const category = availableCategories.find((c) => c.name === item.categoryName);
-				populatedItems.push({
-					type: 'resource' as const,
-					count: item.count,
-					data: category || { id: 0, name: item.categoryName, description: null }
-				});
-			} else if (item.type === 'existing-group') {
-				// Find the existing resource group by name
-				const existingGroup = existingResourceGroups.find((g) => g.name === item.resourceGroupName);
-				if (existingGroup) {
-					// Fetch the complete resource group data
-					try {
-						const response = await fetch(`/api/resource-groups/${existingGroup.id}`);
-						if (response.ok) {
-							const completeGroup = await response.json();
-							populatedItems.push({
-								type: 'existing-group' as const,
-								count: item.count,
-								data: {
-									...existingGroup,
-									items: completeGroup.items,
-									completeStructure: completeGroup
-								}
-							});
-						} else {
-							// Fallback if fetch fails
-							populatedItems.push({
-								type: 'existing-group' as const,
-								count: item.count,
-								data: existingGroup
-							});
-						}
-					} catch (error) {
-						console.error('Failed to fetch resource group details:', error);
-						// Fallback if fetch fails
-						populatedItems.push({
-							type: 'existing-group' as const,
-							count: item.count,
-							data: existingGroup
-						});
-					}
-				} else {
-					console.warn(`Resource group "${item.resourceGroupName}" not found in available groups`);
-				}
-			}
-		}
-		
-		resourceGroup.items = populatedItems;
+		resourceGroup.items = response.items.map((item) => {
+			const category = availableCategories.find((c) => c.name === item.categoryName);
+			return {
+				type: 'resource' as const,
+				count: item.count,
+				data: category || { id: 0, name: item.categoryName, description: null }
+			};
+		});
 	}
 
 	// Auto-populate resource group when AI response is received
@@ -792,10 +700,10 @@
 					{resourceGroupLoading ? 'Creating...' : 'Create Resource Group'}
 				</Button>
 				<Button
-					onclick={analyzeLocationCapabilities}
+					onclick={handleQueryWithAnalysis}
 					variant="outline"
 					type="button"
-					disabled={resourceGroup.items.length === 0 || analysisLoading}
+					disabled={(resourceGroup.items.length === 0 && !capabilityText.trim()) || analysisLoading}
 				>
 					{analysisLoading ? 'Loading...' : 'Query'}
 				</Button>
@@ -1042,9 +950,7 @@
 																groupedSources,
 																resourceGroup.items
 															)}
-															<div class="font-medium text-green-600">
-																{completeGroupsLocal} groups available
-															</div>
+															<div class="font-medium text-green-600">{completeGroupsLocal} groups available</div>
 															{#if transferredUnits > 0}
 																<div class="font-medium text-blue-600">
 																	{completeGroupsTotal} groups in {maxTransportTime}h
@@ -1057,9 +963,7 @@
 															{/if}
 														{:else}
 															{@const completeGroups = Math.floor(rg.count)}
-															<div class="font-medium text-green-600">
-																{completeGroups} groups available
-															</div>
+															<div class="font-medium text-green-600">{completeGroups} groups available</div>
 															{#if rg.time_to_realize}
 																<div class="font-medium text-blue-600">
 																	{rg.count} in {rg.time_to_realize} h

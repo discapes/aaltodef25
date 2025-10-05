@@ -72,6 +72,7 @@ const SEED_CATEGORIES: SeedCategory[] = [
     { name: 'medical tools', description: 'Specialized medical instruments' },
     { name: 'ambulance', description: 'Emergency medical vehicle' },
     { name: 'car', description: 'Motor vehicle for transportation' },
+    { name: 'room', description: 'Enclosed space or facility' },
 
     // People categories
     { name: 'driver', description: 'Person capable of operating vehicles' },
@@ -165,6 +166,7 @@ function generateMaterialResources(): SeedResource[] {
             'laptop charger': 120, // one per laptop potentially
             'water (1 liter)': 500, // individual bottles
             'medical tools': 50, // individual tools
+            'room': 10
         };
 
         // Apply variance to material counts for this city

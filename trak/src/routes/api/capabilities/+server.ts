@@ -31,34 +31,24 @@ export const POST: RequestHandler = async ({ request }) => {
             Given a capability description, you should create a resource group containing the specific resources (by category name) and quantities needed to fulfill that capability.
             
             Available categories: ${categories.join(", ")}.
-            Available existing resource groups: ${resource_groups.join(", ")}.
+            Available resource groups: ${resource_groups.join(", ")}.
             
             Create a resource group with:
             - A descriptive name for the capability
             - An optional description explaining the purpose
-            - A list of items, each specifying either:
-              
-              For individual resources:
+            - A list of items, each specifying:
               * type: "resource" 
               * count: number of units needed
               * categoryName: exact name from the available categories
               * hours_needed: estimated hours of operation/usage (optional, for ongoing activities)
               * hours_to_realize: estimated hours to deploy/setup (optional, for initial setup time)
-              
-              For existing resource groups:
-              * type: "existing-group"
-              * count: number of groups needed
-              * resourceGroupName: exact name from the available existing resource groups
-              * hours_needed: estimated hours of operation/usage (optional, for ongoing activities)
-              * hours_to_realize: estimated hours to deploy/setup (optional, for initial setup time)
             
-            Use existing resource groups when they match the capability requirements closely. This is more efficient than listing individual resources.
             Only list the resources actually needed for to build the item, form the team or complete the action depending on the type of request.
             Nothing else. The fewer the better.
           
             Some categories are people or skills people have. Do not use them if you are not explicitly asked to form a team or similar.
             
-            Only use categories and resource group names from the available lists. Choose realistic quantities and time estimates based on military operational requirements.
+            Only use categories from the available list. Choose realistic quantities and time estimates based on military operational requirements.
             For timing estimates: hours_to_realize should reflect deployment/setup time (e.g., 2-24 hours), 
             hours_needed should reflect operational duration (e.g., 8-72 hours for missions).`
           },
