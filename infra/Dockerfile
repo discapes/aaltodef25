@@ -1,12 +1,12 @@
 # docker build -f infra/Dockerfile -t sveltekit-app .
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY trak/package.json trak/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY trak/ .    
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:26-alpine
 WORKDIR /app
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
